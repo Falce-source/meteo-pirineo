@@ -150,6 +150,19 @@ def test_variable_faltante_no_rompe(
     )
 
 
+@responses.activate
+def test_fetch_zona_propaga_excepcion_red(zona_benasque, fresh_session):
+    """Un 503 del servidor debe propagarse como RequestException limpia."""
+    responses.add(
+        responses.GET,
+        "https://api.open-meteo.com/v1/forecast",
+        status=503,
+        body="Service Unavailable",
+    )
+    with pytest.raises(requests.RequestException):
+        fetch_zona(zona_benasque, session=fresh_session)
+
+
 def test_carga_zonas_yaml():
     """``cargar_zonas`` devuelve 2 zonas con las claves esperadas."""
     repo_root = Path(__file__).parent.parent

@@ -1,5 +1,9 @@
 # meteo-pirineo
 
+![Status](https://github.com/Falce-source/meteo-pirineo/actions/workflows/update.yml/badge.svg)
+
+Sitio público: **[falce-source.github.io/meteo-pirineo](https://falce-source.github.io/meteo-pirineo/)**
+
 Herramienta personal de evaluación meteorológica para actividades de montaña en el Pirineo.
 
 ## Estado

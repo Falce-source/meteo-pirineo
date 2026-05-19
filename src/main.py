@@ -13,9 +13,11 @@ import argparse
 import logging
 import sys
 from collections import Counter
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
+
+import requests
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -235,6 +237,30 @@ def evaluar_zona(
     return salida
 
 
+def _build_evaluaciones_sin_datos(
+    zona: dict,
+    actividades: list[dict],
+    fechas: list[date],
+    aviso: str,
+) -> list[EvaluacionDia]:
+    """Genera evaluaciones placeholder ``SIN_DATOS`` para una zona fallida."""
+    out: list[EvaluacionDia] = []
+    for fecha in fechas:
+        for act in actividades:
+            out.append(
+                EvaluacionDia(
+                    zona_id=zona["id"],
+                    actividad_id=act["id"],
+                    fecha=fecha,
+                    semaforo="SIN_DATOS",
+                    motivos=[],
+                    datos_clave={},
+                    avisos=[aviso],
+                )
+            )
+    return out
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="meteo-pirineo",
@@ -277,6 +303,12 @@ def main(
         modo: ``"ambos"``, ``"consola"`` o ``"html"``.
         output_dir: carpeta donde se escribe ``index.html`` en los
             modos que generan HTML.
+
+    Si una zona falla al hacer fetch (timeout, 5xx, etc.), se genera
+    para ella un paquete de evaluaciones SIN_DATOS con un aviso textual
+    de error. La ejecución solo falla con exit-code distinto de cero
+    si TODAS las zonas fallan o si se produce un error de código no
+    relacionado con red.
     """
     logging.basicConfig(
         level=logging.WARNING,
@@ -285,6 +317,7 @@ def main(
 
     if zonas is None:
         zonas = cargar_zonas()
+    zonas = list(zonas)
     actividades = cargar_actividades()
 
     consola_activa = modo in ("ambos", "consola")
@@ -292,39 +325,84 @@ def main(
 
     paquetes_por_zona: dict[str, dict] = {}
     timestamp_global: datetime | None = None
+    fechas_referencia: list[date] | None = None
+    zonas_fallidas: set[str] = set()
 
     for zona in zonas:
-        prevision = fetch_zona(zona, modelo=modelo)
-        prevision.horario = enriquecer_con_derivadas(
-            prevision.horario, zona["elevacion_m"]
+        try:
+            prevision = fetch_zona(zona, modelo=modelo)
+            prevision.horario = enriquecer_con_derivadas(
+                prevision.horario, zona["elevacion_m"]
+            )
+            evaluaciones = evaluar_zona(prevision, actividades)
+            paquetes_por_zona[zona["id"]] = {
+                "zona": zona,
+                "evaluaciones": evaluaciones,
+                "fecha_fetch": prevision.timestamp_fetch,
+            }
+            if timestamp_global is None or prevision.timestamp_fetch > timestamp_global:
+                timestamp_global = prevision.timestamp_fetch
+            if fechas_referencia is None:
+                fechas_referencia = sorted({e.fecha for e in evaluaciones})
+        except (requests.RequestException, ValueError) as e:
+            logger.error("Fetch falló para zona=%s: %s", zona["id"], e)
+            zonas_fallidas.add(zona["id"])
+            paquetes_por_zona[zona["id"]] = {
+                "zona": zona,
+                "evaluaciones": None,  # se rellena tras el bucle
+                "fecha_fetch": None,
+            }
+
+    # Rellenar evaluaciones de zonas fallidas con SIN_DATOS.
+    if zonas_fallidas:
+        if fechas_referencia is None:
+            hoy = date.today()
+            fechas_referencia = [hoy + timedelta(days=i) for i in range(5)]
+        aviso_error = (
+            f"Error al obtener pronóstico de Open-Meteo a las "
+            f"{datetime.now(timezone.utc):%H:%M UTC}"
         )
-        evaluaciones = evaluar_zona(prevision, actividades)
+        ts_relleno = timestamp_global or datetime.now()
+        for zona_id in zonas_fallidas:
+            paquete = paquetes_por_zona[zona_id]
+            paquete["evaluaciones"] = _build_evaluaciones_sin_datos(
+                paquete["zona"], actividades, fechas_referencia, aviso_error
+            )
+            paquete["fecha_fetch"] = ts_relleno
 
-        paquetes_por_zona[zona["id"]] = {
-            "zona": zona,
-            "evaluaciones": evaluaciones,
-        }
-        if timestamp_global is None or prevision.timestamp_fetch > timestamp_global:
-            timestamp_global = prevision.timestamp_fetch
+    if timestamp_global is None:
+        timestamp_global = datetime.now()
 
-        if consola_activa:
+    # Si TODAS las zonas fallaron, abortar con código no-cero. No se
+    # regenera el HTML para que el último despliegue válido siga visible.
+    if zonas_fallidas == {z["id"] for z in zonas}:
+        logger.error(
+            "Todas las zonas fallaron al obtener pronóstico; "
+            "no se genera HTML."
+        )
+        raise SystemExit(2)
+
+    if consola_activa:
+        for zona in zonas:
+            paquete = paquetes_por_zona[zona["id"]]
             imprimir_tabla_zona(
                 zona=zona,
                 actividades=actividades,
-                evaluaciones=evaluaciones,
-                fecha_fetch=prevision.timestamp_fetch,
+                evaluaciones=paquete["evaluaciones"],
+                fecha_fetch=paquete["fecha_fetch"],
                 modelo=modelo,
             )
-
-    if consola_activa:
         print()
 
     if html_activo and paquetes_por_zona:
-        ts = timestamp_global or datetime.now()
+        slim = {
+            zid: {"zona": p["zona"], "evaluaciones": p["evaluaciones"]}
+            for zid, p in paquetes_por_zona.items()
+        }
         output_path = Path(output_dir) / "index.html"
         path = renderizar_html(
-            evaluaciones_por_zona=paquetes_por_zona,
-            timestamp=ts,
+            evaluaciones_por_zona=slim,
+            timestamp=timestamp_global,
             modelo=modelo,
             actividades=actividades,
             output_path=output_path,
