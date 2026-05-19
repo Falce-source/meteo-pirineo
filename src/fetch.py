@@ -47,7 +47,11 @@ HOURLY_VARIABLES: list[str] = [
 ]
 
 TIMEZONE = "Europe/Madrid"
-MODEL = "best_match"
+# Modelo por defecto v0.1 (ver docs/decisiones.md, ADR-001). AROME France
+# 1.3 km da la mejor resolución con cobertura confirmada para Benasque y
+# Aran, pero su horizonte operativo es ~51 h: días 3-5 vendrán con
+# variables = None y la evaluación reportará "sin datos suficientes".
+MODELO_DEFAULT = "meteofrance_arome_france"
 TIMEOUT_S = 30
 CACHE_PATH = ".cache/openmeteo"
 CACHE_EXPIRE_S = 24 * 3600  # 24h
@@ -96,7 +100,9 @@ def _build_session() -> requests.Session:
     return session
 
 
-def _build_params(zona: dict[str, Any], forecast_days: int) -> dict[str, Any]:
+def _build_params(
+    zona: dict[str, Any], forecast_days: int, modelo: str
+) -> dict[str, Any]:
     """Construye los query params para la llamada a Open-Meteo."""
     try:
         lat = zona["latitud"]
@@ -110,14 +116,16 @@ def _build_params(zona: dict[str, Any], forecast_days: int) -> dict[str, Any]:
         "longitude": lon,
         "elevation": elev,
         "hourly": ",".join(HOURLY_VARIABLES),
-        "models": MODEL,
+        "models": modelo,
         "forecast_days": forecast_days,
         "timezone": TIMEZONE,
         "windspeed_unit": "kmh",
     }
 
 
-def _parse_response(payload: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any]]:
+def _parse_response(
+    payload: dict[str, Any], modelo: str
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Convierte la respuesta JSON de Open-Meteo en DataFrame + metadata.
 
     El DataFrame queda indexado por ``time`` como ``DatetimeIndex`` con
@@ -155,7 +163,7 @@ def _parse_response(payload: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, An
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     metadata: dict[str, Any] = {
-        "modelo_solicitado": MODEL,
+        "modelo_solicitado": modelo,
         "latitude": payload.get("latitude"),
         "longitude": payload.get("longitude"),
         "elevation": payload.get("elevation"),
@@ -172,6 +180,7 @@ def _parse_response(payload: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, An
 def fetch_zona(
     zona: dict[str, Any],
     forecast_days: int = 5,
+    modelo: str = MODELO_DEFAULT,
     session: requests.Session | None = None,
 ) -> PrevisionMeteo:
     """Consulta Open-Meteo para una zona y devuelve la previsión.
@@ -181,6 +190,8 @@ def fetch_zona(
             contener al menos ``latitud``, ``longitud`` y
             ``elevacion_m``.
         forecast_days: Días de previsión (1-16). Por defecto 5.
+        modelo: Identificador de modelo Open-Meteo. Por defecto
+            ``meteofrance_arome_france`` (ver ADR-001).
         session: Sesión HTTP opcional. Si no se pasa, se crea una
             con caché SQLite de 24h en ``.cache/``.
 
@@ -192,11 +203,12 @@ def fetch_zona(
         ValueError: si la respuesta no contiene horarios.
     """
     sess = session or _build_session()
-    params = _build_params(zona, forecast_days)
+    params = _build_params(zona, forecast_days, modelo)
 
     logger.info(
-        "Fetch Open-Meteo zona=%s lat=%s lon=%s elev=%s days=%s",
+        "Fetch Open-Meteo zona=%s modelo=%s lat=%s lon=%s elev=%s days=%s",
         zona.get("id"),
+        modelo,
         params["latitude"],
         params["longitude"],
         params["elevation"],
@@ -211,7 +223,7 @@ def fetch_zona(
         raise
 
     payload = resp.json()
-    df, metadata = _parse_response(payload)
+    df, metadata = _parse_response(payload, modelo)
 
     # Si Open-Meteo reporta una elevación distinta a la pedida (modelo
     # con su propio MDT), lo guardamos para visibilidad humana. No es

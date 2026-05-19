@@ -76,7 +76,7 @@ def test_url_construction(zona_benasque, fixture_payload, fresh_session):
     assert qs["latitude"] == ["42.65"]
     assert qs["longitude"] == ["0.55"]
     assert qs["elevation"] == ["2200"]
-    assert qs["models"] == ["best_match"]
+    assert qs["models"] == ["meteofrance_arome_france"]
     assert qs["forecast_days"] == ["5"]
     assert qs["timezone"] == ["Europe/Madrid"]
     assert qs["windspeed_unit"] == ["kmh"]
