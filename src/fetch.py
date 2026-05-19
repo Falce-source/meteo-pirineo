@@ -31,11 +31,12 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 # Variables horarias solicitadas. El orden importa: Open-Meteo respeta
 # este orden al construir las columnas en la respuesta.
+# `freezing_level_height` se incluye aunque ARPEGE no la sirva: se rellena
+# localmente en src/derivadas.py (ver ADR-004).
 HOURLY_VARIABLES: list[str] = [
     "temperature_2m",
     "relative_humidity_2m",
     "precipitation",
-    "precipitation_probability",
     "weathercode",
     "snowfall",
     "cloudcover",
@@ -47,11 +48,11 @@ HOURLY_VARIABLES: list[str] = [
 ]
 
 TIMEZONE = "Europe/Madrid"
-# Modelo por defecto v0.1 (ver docs/decisiones.md, ADR-001). AROME France
-# 1.3 km da la mejor resolución con cobertura confirmada para Benasque y
-# Aran, pero su horizonte operativo es ~51 h: días 3-5 vendrán con
-# variables = None y la evaluación reportará "sin datos suficientes".
-MODELO_DEFAULT = "meteofrance_arome_france"
+# Modelo por defecto v0.1 (ver docs/decisiones.md, ADR-004 que supera a
+# ADR-001). ARPEGE Europa (~25 km) cubre 111 h, suficiente para los 5
+# días previstos. Su menor resolución frente a AROME implica vientos en
+# cresta posiblemente subestimados; recalibrar umbrales tras uso real.
+MODELO_DEFAULT = "meteofrance_arpege_europe"
 TIMEOUT_S = 30
 CACHE_PATH = ".cache/openmeteo"
 CACHE_EXPIRE_S = 24 * 3600  # 24h

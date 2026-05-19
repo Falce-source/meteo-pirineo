@@ -11,6 +11,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from src.derivadas import enriquecer_con_derivadas
 from src.evaluar import cargar_actividades, evaluar_dia
 from src.fetch import HOURLY_VARIABLES, PrevisionMeteo
 
@@ -378,3 +379,50 @@ def test_datos_clave_se_rellenan(actividades, zona_benasque):
     assert ev.datos_clave["windspeed_10m_mean"] == pytest.approx(25.0)
     assert ev.datos_clave["windgusts_10m_max"] == pytest.approx(40.0)
     assert ev.datos_clave["temperature_2m_min"] == pytest.approx(-5.0)
+
+
+# ---------- Test 10: FLH dispara AMBAR y se marca estimada (Semana 2.5) ----------
+
+def test_freezing_level_height_dispara_ambar_y_marca_estimada(
+    actividades, zona_benasque
+):
+    """T2m=-10°C a 2200m → FLH calc ~661 m < 2500 m → AMBAR alpinismo_estival.
+
+    El motivo correspondiente debe llevar estimada=True porque el FLH
+    proviene de src.derivadas y no del modelo.
+    """
+    fecha = date(2026, 7, 15)
+    df = _hourly_df(
+        fecha,
+        {
+            # Frío constante para forzar FLH bajo.
+            "temperature_2m": [-10.0] * 24,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": [20.0] * 24,
+            "cloudcover": [30.0] * 24,
+            "precipitation": [0.0] * 24,
+            # freezing_level_height venía como columna (de fetch); el
+            # enriquecimiento la sobrescribe.
+            "freezing_level_height": [float("nan")] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    alp_est = _actividad(actividades, "alpinismo_estival")
+    ev = evaluar_dia(prev, alp_est, fecha)
+
+    motivos_flh = [
+        m for m in ev.motivos
+        if m.variable == "freezing_level_height" and m.nivel == "AMBAR"
+    ]
+    assert motivos_flh, (
+        f"esperaba motivo AMBAR para freezing_level_height. "
+        f"motivos={ev.motivos}"
+    )
+    motivo = motivos_flh[0]
+    assert motivo.estimada is True
+    assert motivo.op == "<"
+    assert motivo.umbral_disparado == pytest.approx(2500.0)
+    # FLH calculado debe estar muy por debajo del umbral (~661 m).
+    assert motivo.valor_observado < 1000

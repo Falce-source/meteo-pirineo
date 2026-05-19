@@ -43,8 +43,9 @@ meteo-pirineo/
 │   └── actividades.yaml   # Actividades y umbrales (variable + agg + ámbar/rojo)
 ├── src/
 │   ├── fetch.py           # Cliente Open-Meteo (5 días, horario, sin clave)
+│   ├── derivadas.py       # Variables calculadas localmente (FLH por lapse rate)
 │   ├── evaluar.py         # Lógica pura: previsión + actividad -> semáforo + motivos
-│   └── main.py            # Orquestador: fetch + evaluación + tabla por consola
+│   └── main.py            # Orquestador: fetch + enriquecer + evaluación + tabla
 ├── scripts/               # Scripts puntuales de validación (no producción)
 ├── tests/
 │   ├── test_fetch.py      # Tests del cliente con HTTP mockeado
@@ -59,11 +60,11 @@ meteo-pirineo/
 
 [Open-Meteo Forecast API](https://open-meteo.com/en/docs):
 
-- Modelo `meteofrance_arome_france` (~1.3 km de resolución, ver `docs/decisiones.md`).
-- Hasta 5 días de previsión horaria solicitados; el modelo entrega de forma fiable ~51 h (~2 días).
+- Modelo `meteofrance_arpege_europe` (~25 km de resolución, ver `docs/decisiones.md`, ADR-004).
+- 5 días de previsión horaria (~111 h efectivas del modelo).
 - Sin clave, sin coste, sin login.
 - Timezone `Europe/Madrid`, viento en km/h.
-- Variables horarias: temperatura, humedad, precipitación, probabilidad de precipitación, código meteo, nieve, nubosidad, viento medio y ráfaga a 10 m, dirección de viento, CAPE, altitud del cero térmico.
+- Variables horarias: temperatura, humedad, precipitación, código meteo, nieve, nubosidad, viento medio y ráfaga a 10 m, dirección de viento, CAPE. El cero térmico se calcula localmente desde T2m (ver Limitaciones).
 
 ## Uso local
 
@@ -117,14 +118,16 @@ Glifos: 🟢 verde · 🟡 ámbar · 🔴 rojo · ⚪ sin datos (más allá del 
 
 ## Limitaciones conocidas
 
-> **Modelo y viento en cota.** Los valores de `windspeed_10m` y `windgusts_10m` proceden del modelo Météo-France AROME (1.3 km de resolución) y representan el viento a 10 m sobre la superficie del modelo digital del terreno, no sobre una cumbre o cresta expuesta. En días sinópticamente activos, el viento real en cresta puede ser 1.5-2× el valor modelado. Los umbrales de las reglas están calibrados con experiencia personal en el Pirineo central; si tras uso real los semáforos resultan sistemáticamente optimistas en días de viento, conviene recalibrarlos a la baja.
+> **Modelo y viento en cota.** Los valores de `windspeed_10m` y `windgusts_10m` proceden del modelo Météo-France ARPEGE Europa (~25 km de resolución) y representan el viento a 10 m sobre la superficie del modelo digital del terreno, no sobre una cumbre o cresta expuesta. En días sinópticamente activos, el viento real en cresta puede ser 1.5-2× el valor modelado. Los umbrales de las reglas están calibrados con experiencia personal en el Pirineo central; si tras uso real los semáforos resultan sistemáticamente optimistas en días de viento, conviene recalibrarlos a la baja.
 >
 > **Aludes.** Esta herramienta NO predice riesgo de aludes. Para condiciones nivológicas, consulta siempre el boletín oficial enlazado en cabecera (Lauegi para el Pirineo catalán, AEMET para el aragonés). La regla "Nevada reciente 48 h" en skimo solo dispara un aviso de "consultar boletín externo", nunca un semáforo verde sin reservas.
+>
+> **Cero térmico estimado.** El cero térmico (`freezing_level_height`) no está disponible en el modelo ARPEGE via Open-Meteo. Se calcula localmente a partir de la temperatura a 2 m y un gradiente adiabático estándar de 6.5 K/km. Es una aproximación de primer orden, suficiente para una alerta cualitativa. En el output, los valores marcados como `[estimado]` provienen de este cálculo, no del modelo. Si tras uso real se observa discrepancia significativa con AEMET montaña, evaluar añadir una fuente secundaria de datos solo para esta variable.
 
 Limitaciones adicionales registradas:
 
-- **Horizonte temporal AROME ≈ 51 h.** AROME France entrega de forma fiable los primeros ~2 días. A partir del día 3 las variables vienen vacías y el semáforo de esa fila aparece como ⚪ (sin datos). Si necesitas previsión a 5 días, cambiar de modelo o combinar varios (decisión pendiente, ver `docs/decisiones.md`).
-- **`freezing_level_height` no disponible en AROME France.** La regla informativa de "cero térmico" en alpinismo se queda sin valor; el código no rompe pero esa fila no aporta.
+- **Horizonte temporal ARPEGE ≈ 111 h.** Suficiente para los 5 días previstos. Si Open-Meteo recortara puntualmente, los días sin datos aparecerían como ⚪.
+- **Resolución ARPEGE 25 km.** Subestimación posible del viento en cresta vs un modelo de 1.3 km como AROME. Decisión consciente (ver ADR-004): la cobertura temporal y de variables prima sobre la resolución espacial para v0.1.
 - **Variables derivadas pendientes**: `snowfall_48h_previas` e `indice_tormenta` se declaran en `config/actividades.yaml` pero no se calculan hasta Semana 4. Las reglas que las usan emiten un aviso "Regla pendiente …".
 
 ## Aviso de aludes

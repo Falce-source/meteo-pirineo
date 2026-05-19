@@ -66,6 +66,13 @@ class MotivoSemaforo:
     umbral_disparado: float | None
     nivel: str  # "AMBAR" | "ROJO" | "INFORMATIVO"
     unidad: str | None
+    # Operador comparativo de la regla: ">", ">=", "<", "<=" o
+    # "informativo". Usado por el render para componer el texto del
+    # umbral (p. ej. "umbral rojo: >50 km/h").
+    op: str | None = None
+    # True si el valor proviene de una variable derivada / estimada
+    # localmente (p. ej. FLH por lapse rate). Render añade "[estimado]".
+    estimada: bool = False
 
 
 @dataclass
@@ -147,6 +154,7 @@ def _evaluar_regla_simple(
             ),
             nivel="INFORMATIVO",
             unidad=unidad,
+            op="informativo",
         )
 
     op_fn = OPERADORES.get(op_name)
@@ -161,6 +169,7 @@ def _evaluar_regla_simple(
             umbral_disparado=float(umbral_rojo),
             nivel="ROJO",
             unidad=unidad,
+            op=op_name,
         )
     if umbral_ambar is not None and op_fn(valor_f, umbral_ambar):
         return valor_f, MotivoSemaforo(
@@ -170,6 +179,7 @@ def _evaluar_regla_simple(
             umbral_disparado=float(umbral_ambar),
             nivel="AMBAR",
             unidad=unidad,
+            op=op_name,
         )
     return valor_f, None
 
@@ -209,6 +219,7 @@ def _evaluar_regla_cualquier_franja(
         umbral_disparado=float(umbral),
         nivel=nivel,
         unidad=regla.get("unidad"),
+        op=op_name,
     )
     return True, motivo
 
@@ -268,6 +279,14 @@ def evaluar_dia(
         sub = _filtrar_franja(df, fecha, franja)
         serie = sub[variable] if not sub.empty else pd.Series(dtype=float)
 
+        # Detección genérica: si existe la columna ``<variable>_estimada``
+        # y al menos una fila de la franja es True, el motivo derivado
+        # de esa regla se marca como estimado.
+        flag_col = f"{variable}_estimada"
+        es_estimada = False
+        if flag_col in df.columns and not sub.empty:
+            es_estimada = bool(sub[flag_col].fillna(False).any())
+
         agg_name = regla.get("agg")
 
         # 4) Caso especial: cualquier_franja.
@@ -279,6 +298,8 @@ def evaluar_dia(
             agregaciones_con_datos += 1
             datos_clave[f"{variable}_cualquier_franja"] = float(resultado)
             if motivo is not None:
+                if es_estimada:
+                    motivo.estimada = True
                 motivos.append(motivo)
             continue
 
@@ -297,6 +318,8 @@ def evaluar_dia(
         agregaciones_con_datos += 1
         datos_clave[f"{variable}_{agg_name}"] = valor
         if motivo is not None:
+            if es_estimada:
+                motivo.estimada = True
             motivos.append(motivo)
 
     # Determinar semáforo final.

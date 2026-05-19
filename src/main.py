@@ -18,6 +18,7 @@ from typing import Iterable
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from src.derivadas import enriquecer_con_derivadas  # noqa: E402
 from src.evaluar import (  # noqa: E402
     EvaluacionDia,
     cargar_actividades,
@@ -90,14 +91,20 @@ def _fmt_valor(v: float | None, unidad: str | None) -> str:
     return f"{v:.1f}"
 
 
-def _fmt_umbral(v: float | None, nivel: str, unidad: str | None) -> str:
+def _fmt_umbral(
+    v: float | None,
+    nivel: str,
+    unidad: str | None,
+    op: str | None,
+) -> str:
     if v is None:
         return f"umbral {nivel.lower()}: n/a"
+    # Mantener el operador comparativo en la cadena para que el usuario
+    # vea explícitamente el sentido del umbral (>, <, etc.).
+    prefijo_op = op if op and op != "informativo" else ""
     if unidad:
-        if abs(v) >= 100:
-            return f"umbral {nivel.lower()}: {v:.0f} {unidad}"
-        return f"umbral {nivel.lower()}: {v:.0f} {unidad}"
-    return f"umbral {nivel.lower()}: {v:.0f}"
+        return f"umbral {nivel.lower()}: {prefijo_op}{v:.0f} {unidad}"
+    return f"umbral {nivel.lower()}: {prefijo_op}{v:.0f}"
 
 
 def imprimir_tabla_zona(
@@ -162,13 +169,18 @@ def imprimir_tabla_zona(
         for a in sorted(avisos_zona):
             print(f"  - {a}")
 
-    # Día más complicado.
+    # Día más complicado. Solo se imprime si la zona tiene al menos
+    # un AMBAR o ROJO en algún día y actividad (ADR-004 / Semana 2.5).
+    hay_alerta_en_zona = any(
+        ev.semaforo in ("AMBAR", "ROJO") for ev in evaluaciones
+    )
+    if not hay_alerta_en_zona:
+        return
+
     peor = elegir_peor_dia(evaluaciones)
     if peor is None:
         return
     evs_peor = [ev for ev in evaluaciones if ev.fecha == peor]
-    # Solo mostrar bloque si alguna actividad tiene motivos disparados
-    # o avisos pendientes ese día.
     interesantes = [
         ev for ev in evs_peor
         if any(m.nivel in ("ROJO", "AMBAR") for m in ev.motivos)
@@ -187,14 +199,21 @@ def imprimir_tabla_zona(
             if m.nivel not in ("ROJO", "AMBAR"):
                 continue
             valor_s = _fmt_valor(m.valor_observado, m.unidad)
-            umbral_s = _fmt_umbral(m.umbral_disparado, m.nivel, m.unidad)
-            print(f"      · {m.descripcion}: {valor_s} ({umbral_s})")
+            umbral_s = _fmt_umbral(
+                m.umbral_disparado, m.nivel, m.unidad, m.op
+            )
+            estimada_s = " [estimado]" if m.estimada else ""
+            print(
+                f"      · {m.descripcion}: {valor_s} ({umbral_s})"
+                f"{estimada_s}"
+            )
         # Mostrar también los informativos si los hay.
         for m in ev.motivos:
             if m.nivel != "INFORMATIVO":
                 continue
             valor_s = _fmt_valor(m.valor_observado, m.unidad)
-            print(f"      · [INFO] {m.descripcion}: {valor_s}")
+            estimada_s = " [estimado]" if m.estimada else ""
+            print(f"      · [INFO] {m.descripcion}: {valor_s}{estimada_s}")
         # Avisos pendientes (variable derivada o no disponible).
         for a in ev.avisos:
             if "pendiente" in a.lower():
@@ -225,6 +244,10 @@ def main(zonas: Iterable[dict] | None = None, modelo: str = MODELO_DEFAULT) -> N
 
     for zona in zonas:
         prevision = fetch_zona(zona, modelo=modelo)
+        # Variables derivadas localmente (FLH a partir de T2m).
+        prevision.horario = enriquecer_con_derivadas(
+            prevision.horario, zona["elevacion_m"]
+        )
         evaluaciones = evaluar_zona(prevision, actividades)
         imprimir_tabla_zona(
             zona=zona,

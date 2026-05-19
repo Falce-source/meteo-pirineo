@@ -8,6 +8,10 @@ la original.
 
 ## ADR-001: Modelo meteorológico único (2026-05-19)
 
+> **Superado por ADR-004 (2026-05-20).** El modelo se cambió a ARPEGE
+> tras descubrir que AROME France solo cubre ~60 h de horizonte y no
+> sirve `freezing_level_height`.
+
 **Decisión**: usar `meteofrance_arome_france` (1.3 km) como modelo único de v0.1.
 
 **Contexto**: tras experimento `scripts/comparar_modelos.py`, todos los modelos
@@ -54,7 +58,40 @@ práctica. El código y la enumeración pueden mantenerse para cubrir
 otros casos de "sin datos" (fallos de fetch, variables faltantes en
 todas las reglas) sin coste.
 
-## ADR-004: Variables derivadas como avisos pendientes (2026-05-19)
+## ADR-004: Modelo único ARPEGE + cero térmico estimado (2026-05-20)
+
+**Decisión**: revertir el plan de combinación AROME+ARPEGE. Usar
+meteofrance_arpege_europe como modelo único de v0.1. Calcular
+freezing_level_height aproximadamente desde temperature_2m y gradiente
+adiabático estándar.
+
+**Contexto**: ARPEGE cubre 111h (suficiente para 5 días). AROME añadiría
+mejor resolución en horas 0-60 pero la diferencia práctica en viento es
+~1 km/h. La combinación introduce complejidad arquitectónica (empalme
+temporal, trazabilidad, lógica de discrepancia entre modelos) que no
+compensa para v0.1 personal. Cero térmico no existe en ninguno de los
+dos modelos Météo-France via Open-Meteo; se estima desde T2m con lapse
+rate de 6.5 K/km, etiquetado como "estimado" en el output.
+
+**Limitación conocida**: ARPEGE tiene resolución de ~25 km. Puede
+subestimar viento en cresta vs un modelo de 1.3 km. Si tras uso real
+los semáforos resultan sistemáticamente optimistas, evaluar en v0.2
+override de AROME para variables de viento en horas 0-60.
+
+**Limitación cero térmico**: FLH estimado por lapse rate; aproximación
+de primer orden. Comparar con AEMET montaña en uso real; si discrepa
+significativamente, añadir ECMWF como fuente secundaria solo de FLH
+en v0.2.
+
+**Variables descartadas del set requerido**: precipitation_probability
+(no la usa ninguna regla en v0.1; no disponible en modelos
+Météo-France).
+
+## ADR-005: Variables derivadas como avisos pendientes (2026-05-19, renumerado 2026-05-20)
+
+> Esta ADR se publicó originalmente como ADR-004 en Semana 2. Se
+> renumeró a ADR-005 al introducir el nuevo ADR-004 (Semana 2.5) por
+> instrucción de la spec, conservando el contenido íntegro.
 
 **Decisión**: las reglas que referencian variables derivadas
 (`snowfall_48h_previas`, `indice_tormenta`) declaradas en
@@ -68,3 +105,7 @@ declarar estas reglas desde ya sin romper el motor de evaluación.
 **Consecuencia**: hasta Semana 4, ciertas actividades (skimo,
 alpinismo_estival, trail, ciclismo) no tienen su semáforo de tormenta
 funcional. El usuario lo ve como aviso textual, no como color.
+
+**Nota Semana 2.5**: `freezing_level_height` dejó esta categoría y se
+calcula ya localmente (ver ADR-004). `snowfall_48h_previas` e
+`indice_tormenta` siguen pendientes.

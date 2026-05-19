@@ -114,7 +114,7 @@ actividades:
         op: "<"
         ambar: 2500
         unidad: "m"
-        descripcion: "Cero térmico bajo (informativo)"
+        descripcion: "Cero térmico bajo (riesgo nieve fresca / mixto)"
       - variable: windspeed_10m
         agg: mean
         op: ">"

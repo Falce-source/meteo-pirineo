@@ -76,13 +76,15 @@ def test_url_construction(zona_benasque, fixture_payload, fresh_session):
     assert qs["latitude"] == ["42.65"]
     assert qs["longitude"] == ["0.55"]
     assert qs["elevation"] == ["2200"]
-    assert qs["models"] == ["meteofrance_arome_france"]
+    assert qs["models"] == ["meteofrance_arpege_europe"]
     assert qs["forecast_days"] == ["5"]
     assert qs["timezone"] == ["Europe/Madrid"]
     assert qs["windspeed_unit"] == ["kmh"]
 
     hourly_pedidas = qs["hourly"][0].split(",")
     assert hourly_pedidas == HOURLY_VARIABLES
+    # precipitation_probability se retiró del set en Semana 2.5 (ADR-004).
+    assert "precipitation_probability" not in hourly_pedidas
 
 
 @responses.activate
@@ -107,9 +109,9 @@ def test_parseo_respuesta_valida(zona_benasque, fixture_payload, fresh_session):
     # ~120 filas (5 días * 24 h).
     assert 115 <= len(df) <= 125
 
-    # 12 columnas, exactamente las solicitadas.
+    # 11 columnas (Semana 2.5: se retiró precipitation_probability).
     assert set(df.columns) == set(HOURLY_VARIABLES)
-    assert len(df.columns) == 12
+    assert len(df.columns) == 11
 
     # Tipos numéricos.
     for col in df.columns:
