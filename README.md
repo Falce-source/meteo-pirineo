@@ -60,7 +60,7 @@ meteo-pirineo/
 
 [Open-Meteo Forecast API](https://open-meteo.com/en/docs):
 
-- Modelo `meteofrance_arpege_europe` (~25 km de resolución, ver `docs/decisiones.md`, ADR-004).
+- Modelo `meteofrance_arpege_europe` (~25 km de resolución, ver `docs/decisiones.md`, ADR-005).
 - 5 días de previsión horaria (~111 h efectivas del modelo).
 - Sin clave, sin coste, sin login.
 - Timezone `Europe/Madrid`, viento en km/h.
@@ -127,7 +127,7 @@ Glifos: 🟢 verde · 🟡 ámbar · 🔴 rojo · ⚪ sin datos (más allá del 
 Limitaciones adicionales registradas:
 
 - **Horizonte temporal ARPEGE ≈ 111 h.** Suficiente para los 5 días previstos. Si Open-Meteo recortara puntualmente, los días sin datos aparecerían como ⚪.
-- **Resolución ARPEGE 25 km.** Subestimación posible del viento en cresta vs un modelo de 1.3 km como AROME. Decisión consciente (ver ADR-004): la cobertura temporal y de variables prima sobre la resolución espacial para v0.1.
+- **Resolución ARPEGE 25 km.** Subestimación posible del viento en cresta vs un modelo de 1.3 km como AROME. Decisión consciente (ver ADR-005): la cobertura temporal y de variables prima sobre la resolución espacial para v0.1.
 - **Variables derivadas pendientes**: `snowfall_48h_previas` e `indice_tormenta` se declaran en `config/actividades.yaml` pero no se calculan hasta Semana 4. Las reglas que las usan emiten un aviso "Regla pendiente …".
 
 ## Aviso de aludes

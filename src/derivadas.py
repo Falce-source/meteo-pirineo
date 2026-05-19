@@ -1,7 +1,7 @@
 """Variables meteorológicas derivadas calculadas localmente.
 
 Por ahora solo ``freezing_level_height`` (cero térmico), porque ARPEGE
-via Open-Meteo no lo sirve (ADR-004). Se aproxima desde
+via Open-Meteo no lo sirve (ADR-005). Se aproxima desde
 ``temperature_2m`` y un gradiente adiabático estándar de 6.5 K/km.
 
 Para cualquier variable derivada que sustituya una columna del modelo,

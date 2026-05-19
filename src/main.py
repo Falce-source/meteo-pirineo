@@ -170,7 +170,7 @@ def imprimir_tabla_zona(
             print(f"  - {a}")
 
     # Día más complicado. Solo se imprime si la zona tiene al menos
-    # un AMBAR o ROJO en algún día y actividad (ADR-004 / Semana 2.5).
+    # un AMBAR o ROJO en algún día y actividad (Semana 2.5).
     hay_alerta_en_zona = any(
         ev.semaforo in ("AMBAR", "ROJO") for ev in evaluaciones
     )

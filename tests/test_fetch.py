@@ -83,7 +83,7 @@ def test_url_construction(zona_benasque, fixture_payload, fresh_session):
 
     hourly_pedidas = qs["hourly"][0].split(",")
     assert hourly_pedidas == HOURLY_VARIABLES
-    # precipitation_probability se retiró del set en Semana 2.5 (ADR-004).
+    # precipitation_probability se retiró del set en Semana 2.5 (ADR-005).
     assert "precipitation_probability" not in hourly_pedidas
 
 

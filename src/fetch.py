@@ -32,7 +32,7 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 # Variables horarias solicitadas. El orden importa: Open-Meteo respeta
 # este orden al construir las columnas en la respuesta.
 # `freezing_level_height` se incluye aunque ARPEGE no la sirva: se rellena
-# localmente en src/derivadas.py (ver ADR-004).
+# localmente en src/derivadas.py (ver ADR-005).
 HOURLY_VARIABLES: list[str] = [
     "temperature_2m",
     "relative_humidity_2m",
@@ -48,7 +48,7 @@ HOURLY_VARIABLES: list[str] = [
 ]
 
 TIMEZONE = "Europe/Madrid"
-# Modelo por defecto v0.1 (ver docs/decisiones.md, ADR-004 que supera a
+# Modelo por defecto v0.1 (ver docs/decisiones.md, ADR-005 que supera a
 # ADR-001). ARPEGE Europa (~25 km) cubre 111 h, suficiente para los 5
 # días previstos. Su menor resolución frente a AROME implica vientos en
 # cresta posiblemente subestimados; recalibrar umbrales tras uso real.

@@ -6,9 +6,13 @@ relevante; nunca editar entradas antiguas — si una decisión queda
 revertida, se crea una entrada nueva que la supere y se enlaza desde
 la original.
 
+> Los ADRs son inmutables una vez publicados. No se renombran ni renumeran;
+> si una decisión se revierte o modifica, se añade un nuevo ADR que la
+> supersede explícitamente.
+
 ## ADR-001: Modelo meteorológico único (2026-05-19)
 
-> **Superado por ADR-004 (2026-05-20).** El modelo se cambió a ARPEGE
+> **Superado por ADR-005 (2026-05-20).** El modelo se cambió a ARPEGE
 > tras descubrir que AROME France solo cubre ~60 h de horizonte y no
 > sirve `freezing_level_height`.
 
@@ -58,7 +62,26 @@ práctica. El código y la enumeración pueden mantenerse para cubrir
 otros casos de "sin datos" (fallos de fetch, variables faltantes en
 todas las reglas) sin coste.
 
-## ADR-004: Modelo único ARPEGE + cero térmico estimado (2026-05-20)
+## ADR-004: Variables derivadas como avisos pendientes (2026-05-19)
+
+**Decisión**: las reglas que referencian variables derivadas
+(`snowfall_48h_previas`, `indice_tormenta`) declaradas en
+`config/actividades.yaml` se saltan en Semana 2 y se emiten como
+"Regla pendiente: …" en el campo `avisos` de la evaluación.
+
+**Razón**: la lógica de derivación vive en `src/evaluar.py` y
+`src/tormenta.py` (Semana 4). Queremos que la configuración pueda
+declarar estas reglas desde ya sin romper el motor de evaluación.
+
+**Consecuencia**: hasta Semana 4, ciertas actividades (skimo,
+alpinismo_estival, trail, ciclismo) no tienen su semáforo de tormenta
+funcional. El usuario lo ve como aviso textual, no como color.
+
+**Nota (2026-05-20)**: `freezing_level_height` dejó esta categoría y se
+calcula ya localmente (ver ADR-005). `snowfall_48h_previas` e
+`indice_tormenta` siguen pendientes.
+
+## ADR-005: Modelo único ARPEGE + cero térmico estimado (2026-05-20)
 
 **Decisión**: revertir el plan de combinación AROME+ARPEGE. Usar
 meteofrance_arpege_europe como modelo único de v0.1. Calcular
@@ -86,26 +109,3 @@ en v0.2.
 **Variables descartadas del set requerido**: precipitation_probability
 (no la usa ninguna regla en v0.1; no disponible en modelos
 Météo-France).
-
-## ADR-005: Variables derivadas como avisos pendientes (2026-05-19, renumerado 2026-05-20)
-
-> Esta ADR se publicó originalmente como ADR-004 en Semana 2. Se
-> renumeró a ADR-005 al introducir el nuevo ADR-004 (Semana 2.5) por
-> instrucción de la spec, conservando el contenido íntegro.
-
-**Decisión**: las reglas que referencian variables derivadas
-(`snowfall_48h_previas`, `indice_tormenta`) declaradas en
-`config/actividades.yaml` se saltan en Semana 2 y se emiten como
-"Regla pendiente: …" en el campo `avisos` de la evaluación.
-
-**Razón**: la lógica de derivación vive en `src/evaluar.py` y
-`src/tormenta.py` (Semana 4). Queremos que la configuración pueda
-declarar estas reglas desde ya sin romper el motor de evaluación.
-
-**Consecuencia**: hasta Semana 4, ciertas actividades (skimo,
-alpinismo_estival, trail, ciclismo) no tienen su semáforo de tormenta
-funcional. El usuario lo ve como aviso textual, no como color.
-
-**Nota Semana 2.5**: `freezing_level_height` dejó esta categoría y se
-calcula ya localmente (ver ADR-004). `snowfall_48h_previas` e
-`indice_tormenta` siguen pendientes.
