@@ -467,7 +467,7 @@ def _render_footer() -> str:
     oficiales para condiciones nivológicas y meteorología de montaña.
   </p>
   <p>
-    Código: <a href="https://github.com/" target="_blank" rel="noopener">repositorio en GitHub</a>
+    Código: <a href="https://github.com/Falce-source/meteo-pirineo" target="_blank" rel="noopener">repositorio en GitHub</a>
     · v0.1
   </p>
 </footer>
