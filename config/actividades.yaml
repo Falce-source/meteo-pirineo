@@ -1,0 +1,198 @@
+# Actividades y umbrales. Cada regla dispara un nivel (ambar/rojo) cuando
+# se cumple la condición. El peor componente determina el color final
+# (lógica implementada en src/evaluar.py - Semana 2).
+
+# Variables disponibles (de Open-Meteo, horarias):
+#   temperature_2m, relative_humidity_2m, precipitation,
+#   precipitation_probability, weathercode, snowfall, cloudcover,
+#   windspeed_10m, windgusts_10m, winddirection_10m, cape,
+#   freezing_level_height
+#
+# Variables derivadas (calculadas a partir de las anteriores, no se
+# piden a la API directamente):
+#   snowfall_48h_previas  -> suma de snowfall en las 48h previas a la franja
+#   indice_tormenta       -> índice 0..3 derivado de cape, weathercode y
+#                            precipitation_probability (lógica en
+#                            src/tormenta.py - Semana 4).
+#
+# Agregaciones soportadas (a implementar en Semana 2): max, min, mean,
+# sum, cualquier_franja (=true si en algún momento de la franja activa
+# se supera el umbral).
+#
+# Franja horaria por defecto: 07:00-17:00 hora local.
+
+actividades:
+
+  - id: skimo
+    nombre: "Esquí de montaña / Skimo"
+    estacion_principal: invierno
+    requiere_aviso_aludes: true
+    franja_horaria: [7, 17]
+    reglas:
+      - variable: windspeed_10m
+        agg: mean
+        op: ">"
+        ambar: 30
+        rojo: 50
+        unidad: "km/h"
+        descripcion: "Viento medio en cota"
+      - variable: windgusts_10m
+        agg: max
+        op: ">"
+        rojo: 70
+        unidad: "km/h"
+        descripcion: "Ráfaga máxima"
+      - variable: cloudcover
+        agg: mean
+        op: ">"
+        ambar: 80
+        unidad: "%"
+        descripcion: "Nubosidad media en cota"
+      - variable: temperature_2m
+        agg: min
+        op: "<"
+        ambar: -15
+        unidad: "°C"
+        descripcion: "Temperatura mínima"
+      - variable: snowfall_48h_previas
+        agg: sum
+        op: ">"
+        ambar: 30
+        unidad: "cm"
+        descripcion: "Nevada reciente 48h (requiere evaluación nivológica)"
+
+  - id: alpinismo_invierno
+    nombre: "Alpinismo invernal / primaveral"
+    estacion_principal: invierno
+    requiere_aviso_aludes: true
+    franja_horaria: [7, 17]
+    reglas:
+      - variable: windspeed_10m
+        agg: mean
+        op: ">"
+        rojo: 40
+        unidad: "km/h"
+        descripcion: "Viento medio en cota"
+      - variable: windgusts_10m
+        agg: max
+        op: ">"
+        rojo: 60
+        unidad: "km/h"
+        descripcion: "Ráfaga máxima"
+      - variable: precipitation
+        agg: max
+        op: ">"
+        rojo: 1
+        unidad: "mm/h"
+        descripcion: "Precipitación durante actividad"
+      - variable: cloudcover
+        agg: mean
+        op: ">"
+        ambar: 70
+        unidad: "%"
+        descripcion: "Nubosidad media en cota"
+      - variable: freezing_level_height
+        agg: mean
+        op: "informativo"
+        unidad: "m"
+        descripcion: "Cero térmico (informativo)"
+
+  - id: alpinismo_estival
+    nombre: "Alpinismo estival"
+    estacion_principal: verano
+    requiere_aviso_aludes: false
+    franja_horaria: [7, 17]
+    reglas:
+      - variable: indice_tormenta
+        agg: cualquier_franja
+        op: ">="
+        rojo: 2
+        franja_especifica: [13, 20]
+        descripcion: "Tormenta probable después de 13:00 (regla clásica Pirineo)"
+      - variable: freezing_level_height
+        agg: min
+        op: "<"
+        ambar: 2500
+        unidad: "m"
+        descripcion: "Cero térmico bajo (informativo)"
+      - variable: windspeed_10m
+        agg: mean
+        op: ">"
+        rojo: 50
+        unidad: "km/h"
+        descripcion: "Viento en cresta"
+      - variable: cloudcover
+        agg: mean
+        op: ">"
+        ambar: 70
+        unidad: "%"
+        descripcion: "Nubosidad media en cota"
+
+  - id: trail
+    nombre: "Trail running"
+    estacion_principal: cualquiera
+    requiere_aviso_aludes: false
+    franja_horaria: [7, 17]
+    reglas:
+      - variable: temperature_2m
+        agg: max
+        op: ">"
+        ambar: 30
+        rojo: 35
+        unidad: "°C"
+        descripcion: "Temperatura máxima"
+      - variable: precipitation
+        agg: max
+        op: ">"
+        ambar: 5
+        unidad: "mm/h"
+        descripcion: "Precipitación durante actividad"
+      - variable: indice_tormenta
+        agg: max
+        op: ">="
+        rojo: 2
+        descripcion: "Tormenta probable"
+      - variable: windspeed_10m
+        agg: mean
+        op: ">"
+        ambar: 60
+        unidad: "km/h"
+        descripcion: "Viento (relevancia baja salvo cresta)"
+
+  - id: ciclismo
+    nombre: "Ciclismo (carretera y MTB)"
+    estacion_principal: cualquiera
+    requiere_aviso_aludes: false
+    franja_horaria: [7, 17]
+    reglas:
+      - variable: windspeed_10m
+        agg: mean
+        op: ">"
+        ambar: 40
+        rojo: 60
+        unidad: "km/h"
+        descripcion: "Viento medio"
+      - variable: windgusts_10m
+        agg: max
+        op: ">"
+        rojo: 70
+        unidad: "km/h"
+        descripcion: "Ráfagas"
+      - variable: precipitation
+        agg: max
+        op: ">"
+        ambar: 2
+        unidad: "mm/h"
+        descripcion: "Precipitación"
+      - variable: temperature_2m
+        agg: max
+        op: ">"
+        ambar: 30
+        rojo: 35
+        unidad: "°C"
+        descripcion: "Temperatura máxima"
+      - variable: indice_tormenta
+        agg: max
+        op: ">="
+        rojo: 2
+        descripcion: "Tormenta probable"

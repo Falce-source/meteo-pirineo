@@ -1,0 +1,24 @@
+# Zonas de evaluación. Cada zona representa un punto representativo en cota
+# alta para evaluar condiciones de actividad de montaña.
+# Las coordenadas y elevación pueden refinarse según se valide el punto.
+
+zonas:
+  - id: benasque
+    nombre: "Valle de Benasque (Cerler / bajo Aneto)"
+    macizo: "Pirineo aragonés"
+    latitud: 42.65
+    longitud: 0.55
+    elevacion_m: 2200
+    boletin_aludes:
+      nombre: "AEMET - Pirineo aragonés"
+      url: "https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0"
+
+  - id: aran
+    nombre: "Vall d'Aran (Baqueira / Port de la Bonaigua)"
+    macizo: "Pirineo catalán"
+    latitud: 42.70
+    longitud: 0.93
+    elevacion_m: 2070
+    boletin_aludes:
+      nombre: "Lauegi (ICGC)"
+      url: "https://lauegi.report/"
