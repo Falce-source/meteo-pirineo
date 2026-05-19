@@ -10,7 +10,7 @@ Herramienta personal de evaluación meteorológica para actividades de montaña 
 |--------|------------------------------------------------------------------------|--------|
 | 1      | Bootstrap del repo, config de zonas/actividades, cliente Open-Meteo    | ✅      |
 | 2      | Lógica de evaluación por actividad + orquestador + tabla por consola   | ✅      |
-| 3      | Render HTML estático para GitHub Pages                                 | ⏳      |
+| 3      | Render HTML estático + despliegue manual en GitHub Pages               | ✅      |
 | 4      | Índice de tormenta + GitHub Actions diario                             | ⏳      |
 
 ## Zonas y actividades
@@ -45,7 +45,8 @@ meteo-pirineo/
 │   ├── fetch.py           # Cliente Open-Meteo (5 días, horario, sin clave)
 │   ├── derivadas.py       # Variables calculadas localmente (FLH por lapse rate)
 │   ├── evaluar.py         # Lógica pura: previsión + actividad -> semáforo + motivos
-│   └── main.py            # Orquestador: fetch + enriquecer + evaluación + tabla
+│   ├── render.py          # HTML estático autocontenido para GitHub Pages
+│   └── main.py            # Orquestador: fetch + enriquecer + evaluación + tabla/HTML
 ├── scripts/               # Scripts puntuales de validación (no producción)
 ├── tests/
 │   ├── test_fetch.py      # Tests del cliente con HTTP mockeado
@@ -76,8 +77,13 @@ python -m venv .venv
 source .venv/bin/activate     # Windows: .\.venv\Scripts\activate
 pip install -r requirements.txt
 
-# 2. Tabla de semáforos por zona (fetch + evaluación + render)
+# 2. Pipeline completo: consola + HTML estático en docs/index.html
 python -m src.main
+
+# Variantes:
+python -m src.main --solo-consola    # sin HTML
+python -m src.main --solo-html       # sin tabla por consola
+python -m src.main --output ./build  # cambiar carpeta de salida
 
 # 3. Solo fetch crudo (tabla resumen por consola)
 python -m src.fetch
@@ -115,6 +121,15 @@ Motivos del día más complicado (19-may):
 ```
 
 Glifos: 🟢 verde · 🟡 ámbar · 🔴 rojo · ⚪ sin datos (más allá del horizonte del modelo).
+
+## Despliegue en GitHub Pages
+
+1. Settings → Pages → Source: `Deploy from a branch`, branch `main`, folder `/docs`.
+2. URL pública: `https://<usuario>.github.io/meteo-pirineo/`.
+3. Cada `git push` con cambios en `docs/index.html` actualiza el sitio.
+4. La automatización de regenerar el HTML diariamente llega en Semana 4 (GitHub Actions).
+
+El HTML es completamente autocontenido (CSS y JS inline, cero recursos externos), por lo que puede abrirse también localmente con `file://` o servirse desde cualquier hosting estático.
 
 ## Limitaciones conocidas
 

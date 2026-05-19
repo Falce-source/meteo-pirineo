@@ -9,10 +9,12 @@ Ejecutar desde la raíz del repo:
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 from collections import Counter
 from datetime import datetime
+from pathlib import Path
 from typing import Iterable
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -30,6 +32,7 @@ from src.fetch import (  # noqa: E402
     cargar_zonas,
     fetch_zona,
 )
+from src.render import renderizar_html  # noqa: E402
 
 GLIFOS_SEMAFORO: dict[str, str] = {
     "VERDE": "🟢",
@@ -232,7 +235,49 @@ def evaluar_zona(
     return salida
 
 
-def main(zonas: Iterable[dict] | None = None, modelo: str = MODELO_DEFAULT) -> None:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        prog="meteo-pirineo",
+        description=(
+            "Orquestador: fetch + evaluación + render. Por defecto "
+            "imprime tabla por consola Y genera HTML estático."
+        ),
+    )
+    grupo = p.add_mutually_exclusive_group()
+    grupo.add_argument(
+        "--solo-consola",
+        action="store_true",
+        help="No generar HTML, solo imprimir tabla por consola.",
+    )
+    grupo.add_argument(
+        "--solo-html",
+        action="store_true",
+        help="No imprimir tabla, solo generar HTML.",
+    )
+    p.add_argument(
+        "--output",
+        default="docs",
+        help="Carpeta de salida para el HTML (default: docs/).",
+    )
+    return p.parse_args(argv)
+
+
+def main(
+    zonas: Iterable[dict] | None = None,
+    modelo: str = MODELO_DEFAULT,
+    modo: str = "ambos",
+    output_dir: str | Path = "docs",
+) -> None:
+    """Orquesta el pipeline completo.
+
+    Args:
+        zonas: iterable de zonas; si ``None``, se cargan desde
+            ``config/zonas.yaml``.
+        modelo: identificador del modelo Open-Meteo.
+        modo: ``"ambos"``, ``"consola"`` o ``"html"``.
+        output_dir: carpeta donde se escribe ``index.html`` en los
+            modos que generan HTML.
+    """
     logging.basicConfig(
         level=logging.WARNING,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -242,23 +287,57 @@ def main(zonas: Iterable[dict] | None = None, modelo: str = MODELO_DEFAULT) -> N
         zonas = cargar_zonas()
     actividades = cargar_actividades()
 
+    consola_activa = modo in ("ambos", "consola")
+    html_activo = modo in ("ambos", "html")
+
+    paquetes_por_zona: dict[str, dict] = {}
+    timestamp_global: datetime | None = None
+
     for zona in zonas:
         prevision = fetch_zona(zona, modelo=modelo)
-        # Variables derivadas localmente (FLH a partir de T2m).
         prevision.horario = enriquecer_con_derivadas(
             prevision.horario, zona["elevacion_m"]
         )
         evaluaciones = evaluar_zona(prevision, actividades)
-        imprimir_tabla_zona(
-            zona=zona,
-            actividades=actividades,
-            evaluaciones=evaluaciones,
-            fecha_fetch=prevision.timestamp_fetch,
-            modelo=modelo,
-        )
 
-    print()
+        paquetes_por_zona[zona["id"]] = {
+            "zona": zona,
+            "evaluaciones": evaluaciones,
+        }
+        if timestamp_global is None or prevision.timestamp_fetch > timestamp_global:
+            timestamp_global = prevision.timestamp_fetch
+
+        if consola_activa:
+            imprimir_tabla_zona(
+                zona=zona,
+                actividades=actividades,
+                evaluaciones=evaluaciones,
+                fecha_fetch=prevision.timestamp_fetch,
+                modelo=modelo,
+            )
+
+    if consola_activa:
+        print()
+
+    if html_activo and paquetes_por_zona:
+        ts = timestamp_global or datetime.now()
+        output_path = Path(output_dir) / "index.html"
+        path = renderizar_html(
+            evaluaciones_por_zona=paquetes_por_zona,
+            timestamp=ts,
+            modelo=modelo,
+            actividades=actividades,
+            output_path=output_path,
+        )
+        print(f"HTML generado en: {path}")
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    if args.solo_consola:
+        modo = "consola"
+    elif args.solo_html:
+        modo = "html"
+    else:
+        modo = "ambos"
+    main(modo=modo, output_dir=args.output)

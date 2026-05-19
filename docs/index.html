@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meteo Pirineo</title>
+<style>
+*,*::before,*::after { box-sizing: border-box; }
+html,body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #1f2937;
+  background: #ffffff;
+  line-height: 1.45;
+  font-size: 16px;
+}
+.contenedor { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+header.principal { padding: 1.25rem 0 0.5rem; border-bottom: 1px solid #e5e7eb; }
+header.principal h1 { margin: 0 0 0.25rem; font-size: 1.5rem; }
+.meta-actualizacion { color: #6b7280; font-size: 0.9rem; }
+.aviso-aludes {
+  background: #fff7ed;
+  border-left: 4px solid #d97706;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+.aviso-aludes strong { display: block; margin-bottom: 0.25rem; }
+.aviso-aludes ul { margin: 0.25rem 0 0; padding-left: 1.25rem; }
+.aviso-aludes a { color: #b45309; }
+.zona { margin: 1.5rem 0; }
+.zona h2 { font-size: 1.2rem; margin: 0 0 0.25rem; }
+.zona .meta {
+  margin: 0 0 0.5rem; color: #6b7280; font-size: 0.85rem;
+}
+.zona .meta a { color: #6b7280; text-decoration: underline; }
+table.semaforos {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+table.semaforos thead th {
+  font-weight: 600;
+  color: #4b5563;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.2rem;
+}
+table.semaforos thead th:first-child { text-align: left; }
+table.semaforos tbody th {
+  text-align: left;
+  font-weight: 500;
+  color: #1f2937;
+  padding: 0.4rem 0.4rem 0.4rem 0;
+  font-size: 0.85rem;
+  vertical-align: middle;
+  word-break: break-word;
+  hyphens: auto;
+}
+table.semaforos td { padding: 0.2rem; text-align: center; }
+table.semaforos th:first-child { width: 38%; }
+table.semaforos th:not(:first-child) { width: 12.4%; }
+
+button.celda {
+  font: inherit;
+  width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 1.35rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.05s ease;
+}
+button.celda:active { transform: scale(0.96); }
+button.celda:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+button.celda.verde     { background: #dcfce7; color: #16a34a; border-color: #86efac; }
+button.celda.ambar     { background: #fef3c7; color: #d97706; border-color: #fcd34d; }
+button.celda.rojo      { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+button.celda.sin-datos { background: #f5f5f5; color: #737373; border-color: #d4d4d4; }
+
+footer.principal {
+  padding: 1rem 0;
+  margin-top: 2rem;
+  border-top: 1px solid #e5e7eb;
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+footer.principal a { color: #6b7280; }
+
+dialog#detalle {
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 1.1rem 1.2rem 1.2rem;
+  max-width: 92vw;
+  width: 480px;
+  max-height: 85vh;
+  color: #1f2937;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+}
+dialog#detalle::backdrop { background: rgba(15, 23, 42, 0.45); }
+#detalle-titulo {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+#detalle-meta { color: #6b7280; font-size: 0.85rem; margin: 0 0 0.75rem; }
+#detalle-cuerpo h4 { margin: 0.75rem 0 0.3rem; font-size: 0.9rem; color: #4b5563; }
+#detalle-cuerpo ul { margin: 0; padding-left: 1.1rem; }
+#detalle-cuerpo li { padding: 0.15rem 0; font-size: 0.9rem; }
+#detalle-cuerpo dl.datos-clave {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 0.6rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+#detalle-cuerpo dl.datos-clave dt { color: #6b7280; }
+#detalle-cuerpo dl.datos-clave dd { margin: 0; font-variant-numeric: tabular-nums; }
+.nivel-ROJO  { color: #dc2626; font-weight: 600; }
+.nivel-AMBAR { color: #d97706; font-weight: 600; }
+.nivel-INFORMATIVO { color: #2563eb; font-weight: 500; }
+button#detalle-cerrar {
+  margin-top: 1rem;
+  background: #1f2937;
+  color: #f9fafb;
+  border: 0;
+  padding: 0.55rem 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+button#detalle-cerrar:hover { background: #111827; }
+
+@media (max-width: 480px) {
+  .contenedor { padding: 0.75rem; }
+  header.principal h1 { font-size: 1.25rem; }
+  table.semaforos thead th { font-size: 0.7rem; }
+  table.semaforos tbody th { font-size: 0.78rem; }
+  button.celda { font-size: 1.15rem; }
+}
+</style>
+</head>
+<body>
+<div class="contenedor">
+<header class="principal">
+  <h1>Meteo Pirineo — actividades de montaña</h1>
+  <p class="meta-actualizacion">
+    Actualizado: <time datetime="2026-05-19T15:28:41.407618">2026-05-19 15:28</time>
+    — modelo: <code>meteofrance_arpege_europe</code>
+  </p>
+</header>
+<aside class="aviso-aludes">
+  <strong>Esta herramienta NO predice aludes.</strong>
+  Para condiciones nivológicas consulta siempre el boletín oficial:
+  <ul>
+    <li><strong>Pirineo aragonés:</strong> <a href="https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0" target="_blank" rel="noopener">AEMET - Pirineo aragonés</a></li>
+    <li><strong>Pirineo catalán:</strong> <a href="https://lauegi.report/" target="_blank" rel="noopener">Lauegi (ICGC)</a></li>
+  </ul>
+</aside>
+<main>
+<section class="zona" id="zona-benasque">
+  <h2>Valle de Benasque (Cerler / bajo Aneto)</h2>
+  <p class="meta">
+    42.65°N, 0.55°E · 2200 m
+    · Pirineo aragonés · Boletín de aludes: <a href="https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0" target="_blank" rel="noopener">AEMET - Pirineo aragonés</a>
+  </p>
+  <table class="semaforos">
+    <thead>
+      <tr><th scope="col">Actividad</th><th scope="col">19-may</th><th scope="col">20-may</th><th scope="col">21-may</th><th scope="col">22-may</th><th scope="col">23-may</th></tr>
+    </thead>
+    <tbody>
+      <tr><th scope="row">Esquí de montaña / Skimo</th><td><button type="button" id="benasque-skimo-2026-05-19" class="celda ambar" aria-label="Esquí de montaña / Skimo en Valle de Benasque (Cerler / bajo Aneto) el 19-may-2026: ambar" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="AMBAR" data-motivos="[{&quot;descripcion&quot;: &quot;Nubosidad media en cota&quot;, &quot;variable&quot;: &quot;cloudcover&quot;, &quot;valor_observado&quot;: 80.45454545454545, &quot;umbral_disparado&quot;: 80.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;%&quot;, &quot;op&quot;: &quot;&gt;&quot;, &quot;estimada&quot;: false}]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 3.2, &quot;windgusts_10m_max&quot;: 16.6, &quot;cloudcover_mean&quot;: 80.455, &quot;temperature_2m_min&quot;: 1.5}">!</button></td><td><button type="button" id="benasque-skimo-2026-05-20" class="celda verde" aria-label="Esquí de montaña / Skimo en Valle de Benasque (Cerler / bajo Aneto) el 20-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.227, &quot;windgusts_10m_max&quot;: 21.2, &quot;cloudcover_mean&quot;: 60.727, &quot;temperature_2m_min&quot;: 0.1}">✓</button></td><td><button type="button" id="benasque-skimo-2026-05-21" class="celda verde" aria-label="Esquí de montaña / Skimo en Valle de Benasque (Cerler / bajo Aneto) el 21-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 3.736, &quot;windgusts_10m_max&quot;: 13.7, &quot;cloudcover_mean&quot;: 11.545, &quot;temperature_2m_min&quot;: 0.7}">✓</button></td><td><button type="button" id="benasque-skimo-2026-05-22" class="celda verde" aria-label="Esquí de montaña / Skimo en Valle de Benasque (Cerler / bajo Aneto) el 22-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 1.745, &quot;windgusts_10m_max&quot;: 11.5, &quot;cloudcover_mean&quot;: 29.182, &quot;temperature_2m_min&quot;: 2.6}">✓</button></td><td><button type="button" id="benasque-skimo-2026-05-23" class="celda verde" aria-label="Esquí de montaña / Skimo en Valle de Benasque (Cerler / bajo Aneto) el 23-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 2.663, &quot;windgusts_10m_max&quot;: 13.7, &quot;cloudcover_mean&quot;: 48.75, &quot;temperature_2m_min&quot;: 3.5}">✓</button></td></tr><tr><th scope="row">Alpinismo invernal / primaveral</th><td><button type="button" id="benasque-alpinismo_invierno-2026-05-19" class="celda rojo" aria-label="Alpinismo invernal / primaveral en Valle de Benasque (Cerler / bajo Aneto) el 19-may-2026: rojo" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="ROJO" data-motivos="[{&quot;descripcion&quot;: &quot;Precipitación durante actividad&quot;, &quot;variable&quot;: &quot;precipitation&quot;, &quot;valor_observado&quot;: 1.3, &quot;umbral_disparado&quot;: 1.0, &quot;nivel&quot;: &quot;ROJO&quot;, &quot;unidad&quot;: &quot;mm/h&quot;, &quot;op&quot;: &quot;&gt;&quot;, &quot;estimada&quot;: false}, {&quot;descripcion&quot;: &quot;Nubosidad media en cota&quot;, &quot;variable&quot;: &quot;cloudcover&quot;, &quot;valor_observado&quot;: 80.45454545454545, &quot;umbral_disparado&quot;: 70.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;%&quot;, &quot;op&quot;: &quot;&gt;&quot;, &quot;estimada&quot;: false}, {&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 3104.8951048951053, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 3.2, &quot;windgusts_10m_max&quot;: 16.6, &quot;precipitation_max&quot;: 1.3, &quot;cloudcover_mean&quot;: 80.455, &quot;freezing_level_height_mean&quot;: 3104.895}">✗</button></td><td><button type="button" id="benasque-alpinismo_invierno-2026-05-20" class="celda verde" aria-label="Alpinismo invernal / primaveral en Valle de Benasque (Cerler / bajo Aneto) el 20-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="VERDE" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 3321.678321678322, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.227, &quot;windgusts_10m_max&quot;: 21.2, &quot;precipitation_max&quot;: 0.0, &quot;cloudcover_mean&quot;: 60.727, &quot;freezing_level_height_mean&quot;: 3321.678}">✓</button></td><td><button type="button" id="benasque-alpinismo_invierno-2026-05-21" class="celda verde" aria-label="Alpinismo invernal / primaveral en Valle de Benasque (Cerler / bajo Aneto) el 21-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="VERDE" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 3552.4475524475524, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 3.736, &quot;windgusts_10m_max&quot;: 13.7, &quot;precipitation_max&quot;: 0.0, &quot;cloudcover_mean&quot;: 11.545, &quot;freezing_level_height_mean&quot;: 3552.448}">✓</button></td><td><button type="button" id="benasque-alpinismo_invierno-2026-05-22" class="celda verde" aria-label="Alpinismo invernal / primaveral en Valle de Benasque (Cerler / bajo Aneto) el 22-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 3679.7202797202804, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 1.745, &quot;windgusts_10m_max&quot;: 11.5, &quot;precipitation_max&quot;: 0.0, &quot;cloudcover_mean&quot;: 29.182, &quot;freezing_level_height_mean&quot;: 3679.72}">✓</button></td><td><button type="button" id="benasque-alpinismo_invierno-2026-05-23" class="celda verde" aria-label="Alpinismo invernal / primaveral en Valle de Benasque (Cerler / bajo Aneto) el 23-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 3569.2307692307695, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: AEMET - Pirineo aragonés https://www.aemet.es/es/eltiempo/prediccion/montana?w=ag0&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 2.663, &quot;windgusts_10m_max&quot;: 13.7, &quot;precipitation_max&quot;: 0.0, &quot;cloudcover_mean&quot;: 48.75, &quot;freezing_level_height_mean&quot;: 3569.231}">✓</button></td></tr><tr><th scope="row">Alpinismo estival</th><td><button type="button" id="benasque-alpinismo_estival-2026-05-19" class="celda ambar" aria-label="Alpinismo estival en Valle de Benasque (Cerler / bajo Aneto) el 19-may-2026: ambar" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="AMBAR" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico bajo (riesgo nieve fresca / mixto)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 2430.769230769231, &quot;umbral_disparado&quot;: 2500.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;&lt;&quot;, &quot;estimada&quot;: true}, {&quot;descripcion&quot;: &quot;Nubosidad media en cota&quot;, &quot;variable&quot;: &quot;cloudcover&quot;, &quot;valor_observado&quot;: 80.45454545454545, &quot;umbral_disparado&quot;: 70.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;%&quot;, &quot;op&quot;: &quot;&gt;&quot;, &quot;estimada&quot;: false}]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2430.769, &quot;windspeed_10m_mean&quot;: 3.2, &quot;cloudcover_mean&quot;: 80.455}">!</button></td><td><button type="button" id="benasque-alpinismo_estival-2026-05-20" class="celda ambar" aria-label="Alpinismo estival en Valle de Benasque (Cerler / bajo Aneto) el 20-may-2026: ambar" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="AMBAR" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico bajo (riesgo nieve fresca / mixto)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 2215.3846153846152, &quot;umbral_disparado&quot;: 2500.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;&lt;&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2215.385, &quot;windspeed_10m_mean&quot;: 4.227, &quot;cloudcover_mean&quot;: 60.727}">!</button></td><td><button type="button" id="benasque-alpinismo_estival-2026-05-21" class="celda ambar" aria-label="Alpinismo estival en Valle de Benasque (Cerler / bajo Aneto) el 21-may-2026: ambar" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="AMBAR" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico bajo (riesgo nieve fresca / mixto)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 2307.6923076923076, &quot;umbral_disparado&quot;: 2500.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;&lt;&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2307.692, &quot;windspeed_10m_mean&quot;: 3.736, &quot;cloudcover_mean&quot;: 11.545}">!</button></td><td><button type="button" id="benasque-alpinismo_estival-2026-05-22" class="celda verde" aria-label="Alpinismo estival en Valle de Benasque (Cerler / bajo Aneto) el 22-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2600.0, &quot;windspeed_10m_mean&quot;: 1.745, &quot;cloudcover_mean&quot;: 29.182}">✓</button></td><td><button type="button" id="benasque-alpinismo_estival-2026-05-23" class="celda verde" aria-label="Alpinismo estival en Valle de Benasque (Cerler / bajo Aneto) el 23-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2738.462, &quot;windspeed_10m_mean&quot;: 2.663, &quot;cloudcover_mean&quot;: 48.75}">✓</button></td></tr><tr><th scope="row">Trail running</th><td><button type="button" id="benasque-trail-2026-05-19" class="celda verde" aria-label="Trail running en Valle de Benasque (Cerler / bajo Aneto) el 19-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 8.4, &quot;precipitation_max&quot;: 1.3, &quot;windspeed_10m_mean&quot;: 3.2}">✓</button></td><td><button type="button" id="benasque-trail-2026-05-20" class="celda verde" aria-label="Trail running en Valle de Benasque (Cerler / bajo Aneto) el 20-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 10.2, &quot;precipitation_max&quot;: 0.0, &quot;windspeed_10m_mean&quot;: 4.227}">✓</button></td><td><button type="button" id="benasque-trail-2026-05-21" class="celda verde" aria-label="Trail running en Valle de Benasque (Cerler / bajo Aneto) el 21-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 12.3, &quot;precipitation_max&quot;: 0.0, &quot;windspeed_10m_mean&quot;: 3.736}">✓</button></td><td><button type="button" id="benasque-trail-2026-05-22" class="celda verde" aria-label="Trail running en Valle de Benasque (Cerler / bajo Aneto) el 22-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 12.4, &quot;precipitation_max&quot;: 0.0, &quot;windspeed_10m_mean&quot;: 1.745}">✓</button></td><td><button type="button" id="benasque-trail-2026-05-23" class="celda verde" aria-label="Trail running en Valle de Benasque (Cerler / bajo Aneto) el 23-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 12.3, &quot;precipitation_max&quot;: 0.0, &quot;windspeed_10m_mean&quot;: 2.663}">✓</button></td></tr><tr><th scope="row">Ciclismo (carretera y MTB)</th><td><button type="button" id="benasque-ciclismo-2026-05-19" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Valle de Benasque (Cerler / bajo Aneto) el 19-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 3.2, &quot;windgusts_10m_max&quot;: 16.6, &quot;precipitation_max&quot;: 1.3, &quot;temperature_2m_max&quot;: 8.4}">✓</button></td><td><button type="button" id="benasque-ciclismo-2026-05-20" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Valle de Benasque (Cerler / bajo Aneto) el 20-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.227, &quot;windgusts_10m_max&quot;: 21.2, &quot;precipitation_max&quot;: 0.0, &quot;temperature_2m_max&quot;: 10.2}">✓</button></td><td><button type="button" id="benasque-ciclismo-2026-05-21" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Valle de Benasque (Cerler / bajo Aneto) el 21-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 3.736, &quot;windgusts_10m_max&quot;: 13.7, &quot;precipitation_max&quot;: 0.0, &quot;temperature_2m_max&quot;: 12.3}">✓</button></td><td><button type="button" id="benasque-ciclismo-2026-05-22" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Valle de Benasque (Cerler / bajo Aneto) el 22-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 1.745, &quot;windgusts_10m_max&quot;: 11.5, &quot;precipitation_max&quot;: 0.0, &quot;temperature_2m_max&quot;: 12.4}">✓</button></td><td><button type="button" id="benasque-ciclismo-2026-05-23" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Valle de Benasque (Cerler / bajo Aneto) el 23-may-2026: verde" data-zona="benasque" data-zona-nombre="Valle de Benasque (Cerler / bajo Aneto)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 2.663, &quot;windgusts_10m_max&quot;: 13.7, &quot;precipitation_max&quot;: 0.0, &quot;temperature_2m_max&quot;: 12.3}">✓</button></td></tr>
+    </tbody>
+  </table>
+</section>
+<section class="zona" id="zona-aran">
+  <h2>Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)</h2>
+  <p class="meta">
+    42.7°N, 0.93°E · 2070 m
+    · Pirineo catalán · Boletín de aludes: <a href="https://lauegi.report/" target="_blank" rel="noopener">Lauegi (ICGC)</a>
+  </p>
+  <table class="semaforos">
+    <thead>
+      <tr><th scope="col">Actividad</th><th scope="col">19-may</th><th scope="col">20-may</th><th scope="col">21-may</th><th scope="col">22-may</th><th scope="col">23-may</th></tr>
+    </thead>
+    <tbody>
+      <tr><th scope="row">Esquí de montaña / Skimo</th><td><button type="button" id="aran-skimo-2026-05-19" class="celda verde" aria-label="Esquí de montaña / Skimo en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 19-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.091, &quot;windgusts_10m_max&quot;: 24.1, &quot;cloudcover_mean&quot;: 71.636, &quot;temperature_2m_min&quot;: 1.9}">✓</button></td><td><button type="button" id="aran-skimo-2026-05-20" class="celda verde" aria-label="Esquí de montaña / Skimo en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 20-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.945, &quot;windgusts_10m_max&quot;: 25.2, &quot;cloudcover_mean&quot;: 44.273, &quot;temperature_2m_min&quot;: 2.5}">✓</button></td><td><button type="button" id="aran-skimo-2026-05-21" class="celda verde" aria-label="Esquí de montaña / Skimo en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 21-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.4, &quot;windgusts_10m_max&quot;: 19.4, &quot;cloudcover_mean&quot;: 7.636, &quot;temperature_2m_min&quot;: 2.1}">✓</button></td><td><button type="button" id="aran-skimo-2026-05-22" class="celda verde" aria-label="Esquí de montaña / Skimo en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 22-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.145, &quot;windgusts_10m_max&quot;: 19.4, &quot;cloudcover_mean&quot;: 7.182, &quot;temperature_2m_min&quot;: 4.5}">✓</button></td><td><button type="button" id="aran-skimo-2026-05-23" class="celda verde" aria-label="Esquí de montaña / Skimo en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 23-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="skimo" data-actividad-nombre="Esquí de montaña / Skimo" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;, &quot;Regla pendiente: Nevada reciente 48h (requiere evaluación nivológica) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 3.987, &quot;windgusts_10m_max&quot;: 19.4, &quot;cloudcover_mean&quot;: 36.875, &quot;temperature_2m_min&quot;: 5.8}">✓</button></td></tr><tr><th scope="row">Alpinismo invernal / primaveral</th><td><button type="button" id="aran-alpinismo_invierno-2026-05-19" class="celda rojo" aria-label="Alpinismo invernal / primaveral en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 19-may-2026: rojo" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="ROJO" data-motivos="[{&quot;descripcion&quot;: &quot;Precipitación durante actividad&quot;, &quot;variable&quot;: &quot;precipitation&quot;, &quot;valor_observado&quot;: 1.2, &quot;umbral_disparado&quot;: 1.0, &quot;nivel&quot;: &quot;ROJO&quot;, &quot;unidad&quot;: &quot;mm/h&quot;, &quot;op&quot;: &quot;&gt;&quot;, &quot;estimada&quot;: false}, {&quot;descripcion&quot;: &quot;Nubosidad media en cota&quot;, &quot;variable&quot;: &quot;cloudcover&quot;, &quot;valor_observado&quot;: 71.63636363636364, &quot;umbral_disparado&quot;: 70.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;%&quot;, &quot;op&quot;: &quot;&gt;&quot;, &quot;estimada&quot;: false}, {&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 3391.678321678321, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.091, &quot;windgusts_10m_max&quot;: 24.1, &quot;precipitation_max&quot;: 1.2, &quot;cloudcover_mean&quot;: 71.636, &quot;freezing_level_height_mean&quot;: 3391.678}">✗</button></td><td><button type="button" id="aran-alpinismo_invierno-2026-05-20" class="celda verde" aria-label="Alpinismo invernal / primaveral en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 20-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="VERDE" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 3749.72027972028, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.945, &quot;windgusts_10m_max&quot;: 25.2, &quot;precipitation_max&quot;: 0.0, &quot;cloudcover_mean&quot;: 44.273, &quot;freezing_level_height_mean&quot;: 3749.72}">✓</button></td><td><button type="button" id="aran-alpinismo_invierno-2026-05-21" class="celda verde" aria-label="Alpinismo invernal / primaveral en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 21-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="VERDE" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 3962.3076923076924, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.4, &quot;windgusts_10m_max&quot;: 19.4, &quot;precipitation_max&quot;: 0.0, &quot;cloudcover_mean&quot;: 7.636, &quot;freezing_level_height_mean&quot;: 3962.308}">✓</button></td><td><button type="button" id="aran-alpinismo_invierno-2026-05-22" class="celda verde" aria-label="Alpinismo invernal / primaveral en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 22-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 4152.517482517483, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.145, &quot;windgusts_10m_max&quot;: 19.4, &quot;precipitation_max&quot;: 0.0, &quot;cloudcover_mean&quot;: 7.182, &quot;freezing_level_height_mean&quot;: 4152.517}">✓</button></td><td><button type="button" id="aran-alpinismo_invierno-2026-05-23" class="celda verde" aria-label="Alpinismo invernal / primaveral en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 23-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_invierno" data-actividad-nombre="Alpinismo invernal / primaveral" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico (informativo)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 3970.0000000000005, &quot;umbral_disparado&quot;: null, &quot;nivel&quot;: &quot;INFORMATIVO&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;informativo&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Consultar boletín de aludes oficial: Lauegi (ICGC) https://lauegi.report/&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 3.987, &quot;windgusts_10m_max&quot;: 19.4, &quot;precipitation_max&quot;: 0.0, &quot;cloudcover_mean&quot;: 36.875, &quot;freezing_level_height_mean&quot;: 3970.0}">✓</button></td></tr><tr><th scope="row">Alpinismo estival</th><td><button type="button" id="aran-alpinismo_estival-2026-05-19" class="celda ambar" aria-label="Alpinismo estival en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 19-may-2026: ambar" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="AMBAR" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico bajo (riesgo nieve fresca / mixto)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 2362.3076923076924, &quot;umbral_disparado&quot;: 2500.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;&lt;&quot;, &quot;estimada&quot;: true}, {&quot;descripcion&quot;: &quot;Nubosidad media en cota&quot;, &quot;variable&quot;: &quot;cloudcover&quot;, &quot;valor_observado&quot;: 71.63636363636364, &quot;umbral_disparado&quot;: 70.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;%&quot;, &quot;op&quot;: &quot;&gt;&quot;, &quot;estimada&quot;: false}]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2362.308, &quot;windspeed_10m_mean&quot;: 4.091, &quot;cloudcover_mean&quot;: 71.636}">!</button></td><td><button type="button" id="aran-alpinismo_estival-2026-05-20" class="celda ambar" aria-label="Alpinismo estival en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 20-may-2026: ambar" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="AMBAR" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico bajo (riesgo nieve fresca / mixto)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 2454.6153846153848, &quot;umbral_disparado&quot;: 2500.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;&lt;&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2454.615, &quot;windspeed_10m_mean&quot;: 4.945, &quot;cloudcover_mean&quot;: 44.273}">!</button></td><td><button type="button" id="aran-alpinismo_estival-2026-05-21" class="celda ambar" aria-label="Alpinismo estival en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 21-may-2026: ambar" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="AMBAR" data-motivos="[{&quot;descripcion&quot;: &quot;Cero térmico bajo (riesgo nieve fresca / mixto)&quot;, &quot;variable&quot;: &quot;freezing_level_height&quot;, &quot;valor_observado&quot;: 2393.076923076923, &quot;umbral_disparado&quot;: 2500.0, &quot;nivel&quot;: &quot;AMBAR&quot;, &quot;unidad&quot;: &quot;m&quot;, &quot;op&quot;: &quot;&lt;&quot;, &quot;estimada&quot;: true}]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2393.077, &quot;windspeed_10m_mean&quot;: 4.4, &quot;cloudcover_mean&quot;: 7.636}">!</button></td><td><button type="button" id="aran-alpinismo_estival-2026-05-22" class="celda verde" aria-label="Alpinismo estival en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 22-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2762.308, &quot;windspeed_10m_mean&quot;: 4.145, &quot;cloudcover_mean&quot;: 7.182}">✓</button></td><td><button type="button" id="aran-alpinismo_estival-2026-05-23" class="celda verde" aria-label="Alpinismo estival en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 23-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="alpinismo_estival" data-actividad-nombre="Alpinismo estival" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable después de 13:00 (regla clásica Pirineo) (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;freezing_level_height_min&quot;: 2962.308, &quot;windspeed_10m_mean&quot;: 3.987, &quot;cloudcover_mean&quot;: 36.875}">✓</button></td></tr><tr><th scope="row">Trail running</th><td><button type="button" id="aran-trail-2026-05-19" class="celda verde" aria-label="Trail running en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 19-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 12.3, &quot;precipitation_max&quot;: 1.2, &quot;windspeed_10m_mean&quot;: 4.091}">✓</button></td><td><button type="button" id="aran-trail-2026-05-20" class="celda verde" aria-label="Trail running en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 20-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 15.1, &quot;precipitation_max&quot;: 0.0, &quot;windspeed_10m_mean&quot;: 4.945}">✓</button></td><td><button type="button" id="aran-trail-2026-05-21" class="celda verde" aria-label="Trail running en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 21-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 17.3, &quot;precipitation_max&quot;: 0.0, &quot;windspeed_10m_mean&quot;: 4.4}">✓</button></td><td><button type="button" id="aran-trail-2026-05-22" class="celda verde" aria-label="Trail running en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 22-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 17.7, &quot;precipitation_max&quot;: 0.0, &quot;windspeed_10m_mean&quot;: 4.145}">✓</button></td><td><button type="button" id="aran-trail-2026-05-23" class="celda verde" aria-label="Trail running en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 23-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="trail" data-actividad-nombre="Trail running" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;temperature_2m_max&quot;: 17.2, &quot;precipitation_max&quot;: 0.0, &quot;windspeed_10m_mean&quot;: 3.987}">✓</button></td></tr><tr><th scope="row">Ciclismo (carretera y MTB)</th><td><button type="button" id="aran-ciclismo-2026-05-19" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 19-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-19" data-fecha-larga="19-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.091, &quot;windgusts_10m_max&quot;: 24.1, &quot;precipitation_max&quot;: 1.2, &quot;temperature_2m_max&quot;: 12.3}">✓</button></td><td><button type="button" id="aran-ciclismo-2026-05-20" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 20-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-20" data-fecha-larga="20-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.945, &quot;windgusts_10m_max&quot;: 25.2, &quot;precipitation_max&quot;: 0.0, &quot;temperature_2m_max&quot;: 15.1}">✓</button></td><td><button type="button" id="aran-ciclismo-2026-05-21" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 21-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-21" data-fecha-larga="21-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.4, &quot;windgusts_10m_max&quot;: 19.4, &quot;precipitation_max&quot;: 0.0, &quot;temperature_2m_max&quot;: 17.3}">✓</button></td><td><button type="button" id="aran-ciclismo-2026-05-22" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 22-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-22" data-fecha-larga="22-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 4.145, &quot;windgusts_10m_max&quot;: 19.4, &quot;precipitation_max&quot;: 0.0, &quot;temperature_2m_max&quot;: 17.7}">✓</button></td><td><button type="button" id="aran-ciclismo-2026-05-23" class="celda verde" aria-label="Ciclismo (carretera y MTB) en Vall d&#x27;Aran (Baqueira / Port de la Bonaigua) el 23-may-2026: verde" data-zona="aran" data-zona-nombre="Vall d&#x27;Aran (Baqueira / Port de la Bonaigua)" data-actividad="ciclismo" data-actividad-nombre="Ciclismo (carretera y MTB)" data-fecha="2026-05-23" data-fecha-larga="23-may-2026" data-semaforo="VERDE" data-motivos="[]" data-avisos="[&quot;Regla pendiente: Tormenta probable (variable derivada no implementada)&quot;]" data-datos-clave="{&quot;windspeed_10m_mean&quot;: 3.987, &quot;windgusts_10m_max&quot;: 19.4, &quot;precipitation_max&quot;: 0.0, &quot;temperature_2m_max&quot;: 17.2}">✓</button></td></tr>
+    </tbody>
+  </table>
+</section>
+</main>
+<footer class="principal">
+  <p>
+    Herramienta personal, no garantizada. Consulta siempre boletines
+    oficiales para condiciones nivológicas y meteorología de montaña.
+  </p>
+  <p>
+    Código: <a href="https://github.com/" target="_blank" rel="noopener">repositorio en GitHub</a>
+    · v0.1
+  </p>
+</footer>
+<dialog id="detalle">
+  <h3 id="detalle-titulo"></h3>
+  <p id="detalle-meta"></p>
+  <div id="detalle-cuerpo"></div>
+  <button type="button" id="detalle-cerrar">Cerrar</button>
+</dialog>
+</div>
+<script>
+(function () {
+  const dialog = document.getElementById('detalle');
+  const titulo = document.getElementById('detalle-titulo');
+  const meta = document.getElementById('detalle-meta');
+  const cuerpo = document.getElementById('detalle-cuerpo');
+  const cerrar = document.getElementById('detalle-cerrar');
+
+  function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+    });
+  }
+
+  function fmtValor(v, unidad) {
+    if (v === null || v === undefined) return '—';
+    if (typeof v === 'number') {
+      const n = Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1);
+      return unidad ? n + ' ' + unidad : n;
+    }
+    return String(v);
+  }
+
+  function fmtUmbral(m) {
+    if (m.umbral_disparado === null || m.umbral_disparado === undefined) return '';
+    const opStr = (m.op && m.op !== 'informativo') ? m.op : '';
+    const v = Math.abs(m.umbral_disparado) >= 100
+      ? m.umbral_disparado.toFixed(0)
+      : m.umbral_disparado.toFixed(0);
+    const unidad = m.unidad ? ' ' + m.unidad : '';
+    return opStr + v + unidad;
+  }
+
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('button.celda');
+    if (!btn) return;
+    const zona = btn.dataset.zonaNombre || '';
+    const actividad = btn.dataset.actividadNombre || '';
+    const fecha = btn.dataset.fechaLarga || btn.dataset.fecha || '';
+    const semaforo = btn.dataset.semaforo || '';
+    const motivos = JSON.parse(btn.dataset.motivos || '[]');
+    const avisos = JSON.parse(btn.dataset.avisos || '[]');
+    const datosClave = JSON.parse(btn.dataset.datosClave || '{}');
+
+    const glifo = btn.textContent.trim();
+    titulo.innerHTML = '<span class="celda-mini ' + escapeHTML(btn.classList.contains('verde') ? 'verde' : btn.classList.contains('ambar') ? 'ambar' : btn.classList.contains('rojo') ? 'rojo' : 'sin-datos') + '">' + escapeHTML(glifo) + '</span>'
+      + escapeHTML(actividad);
+    meta.textContent = zona + ' — ' + fecha + ' — ' + semaforo;
+
+    let html = '';
+    if (motivos.length) {
+      html += '<h4>Motivos</h4><ul>';
+      motivos.forEach(function (m) {
+        const valor = fmtValor(m.valor_observado, m.unidad);
+        const umbral = fmtUmbral(m);
+        const umbralTxt = umbral ? ' (umbral ' + escapeHTML((m.nivel || '').toLowerCase()) + ': ' + escapeHTML(umbral) + ')' : '';
+        const estimada = m.estimada ? ' <em>[estimado]</em>' : '';
+        html += '<li><span class="nivel-' + escapeHTML(m.nivel || '') + '">[' + escapeHTML(m.nivel || '') + ']</span> '
+          + escapeHTML(m.descripcion || m.variable || '') + ': ' + escapeHTML(valor) + umbralTxt + estimada + '</li>';
+      });
+      html += '</ul>';
+    }
+    if (avisos.length) {
+      html += '<h4>Avisos</h4><ul>';
+      avisos.forEach(function (a) { html += '<li>' + escapeHTML(a) + '</li>'; });
+      html += '</ul>';
+    }
+    if (Object.keys(datosClave).length) {
+      html += '<h4>Datos clave</h4><dl class="datos-clave">';
+      Object.keys(datosClave).forEach(function (k) {
+        const v = datosClave[k];
+        const vs = (typeof v === 'number') ? (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)) : v;
+        html += '<dt>' + escapeHTML(k) + '</dt><dd>' + escapeHTML(vs) + '</dd>';
+      });
+      html += '</dl>';
+    }
+    if (!html) html = '<p>Sin motivos ni avisos disparados para este día.</p>';
+    cuerpo.innerHTML = html;
+
+    if (typeof dialog.showModal === 'function') {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute('open', '');
+    }
+  });
+
+  cerrar.addEventListener('click', function () { dialog.close(); });
+  dialog.addEventListener('click', function (e) {
+    const rect = dialog.getBoundingClientRect();
+    const fuera = e.clientX < rect.left || e.clientX > rect.right
+      || e.clientY < rect.top || e.clientY > rect.bottom;
+    if (fuera) dialog.close();
+  });
+})();
+</script>
+</body>
+</html>
