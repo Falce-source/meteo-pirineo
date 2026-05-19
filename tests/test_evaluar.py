@@ -181,13 +181,13 @@ def test_franja_horaria_respetada(actividades, zona_benasque):
     assert not motivos_viento_ambar
 
 
-# ---------- Test 4: franja específica (regla derivada -> pendiente) ----------
+# ---------- Test 4: franja específica con tormenta calculada (Semana 4) ----------
 
 def test_franja_especifica_override(actividades, zona_benasque):
-    """alpinismo_estival usa indice_tormenta (derivada).
+    """Semana 4: ``indice_tormenta`` se evalúa, ya no es aviso pendiente.
 
-    En Semana 2 NO se evalúa; debe aparecer como aviso pendiente y
-    no romper la evaluación.
+    Con CAPE bajo, la regla con franja_especifica se procesa pero no
+    dispara, y no aparece aviso pendiente para indice_tormenta.
     """
     fecha = date(2026, 7, 15)
     df = _hourly_df(
@@ -198,22 +198,33 @@ def test_franja_especifica_override(actividades, zona_benasque):
             "windgusts_10m": [25.0] * 24,
             "cloudcover": [40.0] * 24,
             "precipitation": [0.0] * 24,
-            "freezing_level_height": [3500.0] * 24,
+            "relative_humidity_2m": [50.0] * 24,
+            "cape": [200.0] * 24,  # bajo → indice 0
+            "weathercode": [1] * 24,
         },
     )
-    prev = _prevision(zona_benasque, df)
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
 
     alp = _actividad(actividades, "alpinismo_estival")
     ev = evaluar_dia(prev, alp, fecha)
 
-    # Debe haber un aviso pendiente que mencione la regla de tormenta.
-    avisos_pendientes = [
-        a for a in ev.avisos if "pendiente" in a.lower()
+    # YA NO debe aparecer indice_tormenta como aviso pendiente.
+    pendientes_tormenta = [
+        a for a in ev.avisos
+        if "pendiente" in a.lower() and "tormenta" in a.lower()
     ]
-    assert any(
-        "tormenta" in a.lower() for a in avisos_pendientes
-    ), f"esperaba aviso pendiente por indice_tormenta. avisos={ev.avisos}"
-    # La evaluación no debe romperse; semáforo válido.
+    assert not pendientes_tormenta, (
+        f"indice_tormenta ya no debe ser pendiente. avisos={ev.avisos}"
+    )
+
+    # Con CAPE bajo, la regla no dispara.
+    motivos_tormenta = [
+        m for m in ev.motivos if m.variable == "indice_tormenta"
+    ]
+    assert not motivos_tormenta
+
+    # La evaluación sigue siendo válida.
     assert ev.semaforo in {"VERDE", "AMBAR", "ROJO", "SIN_DATOS"}
 
 
@@ -426,3 +437,94 @@ def test_freezing_level_height_dispara_ambar_y_marca_estimada(
     assert motivo.umbral_disparado == pytest.approx(2500.0)
     # FLH calculado debe estar muy por debajo del umbral (~661 m).
     assert motivo.valor_observado < 1000
+
+
+# ---------- Tests Semana 4: regla de tormenta integrada ----------
+
+def test_regla_tormenta_dispara_rojo_alpinismo_estival(
+    actividades, zona_benasque
+):
+    """CAPE alto a las 15:00 (dentro de franja_especifica 13-20)
+    debe disparar ROJO en alpinismo_estival por indice_tormenta>=2."""
+    fecha = date(2026, 7, 15)
+    cape_serie = [200.0] * 24
+    for h in range(13, 21):  # 13:00 a 20:00
+        cape_serie[h] = 2200.0  # CAPE alto → indice 3
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [18.0] * 24,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": [20.0] * 24,
+            "cloudcover": [40.0] * 24,
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [55.0] * 24,
+            "cape": cape_serie,
+            "weathercode": [1] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    alp_est = _actividad(actividades, "alpinismo_estival")
+    ev = evaluar_dia(prev, alp_est, fecha)
+
+    motivos_tormenta_rojo = [
+        m for m in ev.motivos
+        if m.variable == "indice_tormenta" and m.nivel == "ROJO"
+    ]
+    assert motivos_tormenta_rojo, (
+        f"esperaba motivo ROJO por indice_tormenta. motivos={ev.motivos}"
+    )
+    assert ev.semaforo == "ROJO"
+    # La regla viene de variable derivada → motivo marcado como estimado.
+    assert motivos_tormenta_rojo[0].estimada is True
+
+
+def test_regla_tormenta_no_dispara_en_franja_matinal_estival(
+    actividades, zona_benasque
+):
+    """CAPE alto solo a las 09:00 (fuera de franja_especifica 13-20 de
+    alpinismo_estival) NO debe disparar ROJO para alpinismo_estival,
+    pero SÍ para trail (franja 7-17 que incluye 09:00)."""
+    fecha = date(2026, 7, 15)
+    cape_serie = [200.0] * 24
+    cape_serie[9] = 2200.0  # solo a las 09:00
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [18.0] * 24,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": [20.0] * 24,
+            "cloudcover": [40.0] * 24,
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [55.0] * 24,
+            "cape": cape_serie,
+            "weathercode": [1] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    # Alpinismo estival: franja_especifica [13, 20] -> NO debe disparar.
+    alp_est = _actividad(actividades, "alpinismo_estival")
+    ev_est = evaluar_dia(prev, alp_est, fecha)
+    motivos_tormenta_est = [
+        m for m in ev_est.motivos if m.variable == "indice_tormenta"
+    ]
+    assert not motivos_tormenta_est, (
+        f"alpinismo_estival no debería disparar fuera de franja específica. "
+        f"motivos={ev_est.motivos}"
+    )
+
+    # Trail: franja_horaria [7, 17] (incluye 09:00) -> SÍ debe disparar.
+    trail = _actividad(actividades, "trail")
+    ev_trail = evaluar_dia(prev, trail, fecha)
+    motivos_tormenta_trail = [
+        m for m in ev_trail.motivos if m.variable == "indice_tormenta"
+    ]
+    assert motivos_tormenta_trail, (
+        f"trail debería disparar a las 09:00 (dentro de su franja). "
+        f"motivos={ev_trail.motivos}"
+    )
+    assert motivos_tormenta_trail[0].nivel == "ROJO"

@@ -1,8 +1,10 @@
 """Variables meteorológicas derivadas calculadas localmente.
 
-Por ahora solo ``freezing_level_height`` (cero térmico), porque ARPEGE
-via Open-Meteo no lo sirve (ADR-005). Se aproxima desde
-``temperature_2m`` y un gradiente adiabático estándar de 6.5 K/km.
+Cubre:
+    - ``freezing_level_height``: ARPEGE no lo sirve, se aproxima desde
+      ``temperature_2m`` con lapse rate estándar 6.5 K/km (ADR-005).
+    - ``indice_tormenta``: índice 0-3 calculado a partir de CAPE,
+      weathercode WMO, precipitación y humedad (ADR-006).
 
 Para cualquier variable derivada que sustituya una columna del modelo,
 añadir también la columna ``<variable>_estimada`` (bool) para que el
@@ -12,6 +14,8 @@ render pueda etiquetar el valor como aproximación.
 from __future__ import annotations
 
 import pandas as pd
+
+from src.tormenta import calcular_indice_tormenta
 
 # Gradiente adiabático estándar (lapse rate), K/m. Valor típico
 # usado en montaña para tropósfera libre / aire saturado.
@@ -61,4 +65,6 @@ def enriquecer_con_derivadas(
         df, elevacion_zona_m
     )
     df["freezing_level_height_estimada"] = True
+    df["indice_tormenta"] = calcular_indice_tormenta(df)
+    df["indice_tormenta_estimada"] = True
     return df

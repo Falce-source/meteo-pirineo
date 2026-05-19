@@ -29,12 +29,13 @@ import yaml
 
 from src.fetch import PrevisionMeteo
 
-# Variables declaradas en actividades.yaml que aún no se calculan
-# (semanas 2 y 4). Cualquier regla que las referencie se salta y se
-# añade un aviso.
+# Variables declaradas en actividades.yaml que aún no se calculan.
+# Cualquier regla que las referencie se salta y se añade un aviso.
+#
+# Semana 4: ``indice_tormenta`` dejó esta categoría — ahora se calcula
+# en ``src.tormenta`` y se inyecta vía ``src.derivadas`` (ADR-006).
 VARIABLES_DERIVADAS_PENDIENTES: set[str] = {
     "snowfall_48h_previas",
-    "indice_tormenta",
 }
 
 # Meses en los que se considera relevante el boletín de aludes (criterio

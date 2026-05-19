@@ -109,3 +109,27 @@ en v0.2.
 **Variables descartadas del set requerido**: precipitation_probability
 (no la usa ninguna regla en v0.1; no disponible en modelos
 Météo-France).
+
+## ADR-006: Índice de tormenta calculado localmente (2026-05-22)
+
+**Decisión**: implementar índice de riesgo de tormenta 0-3 como variable
+derivada local, basado en combinación de CAPE, weathercode WMO,
+precipitación y humedad relativa.
+
+**Contexto**: ARPEGE proporciona CAPE y weathercode pero no un índice
+operativo de tormenta. El índice se construye con umbrales de literatura
+meteorológica (CAPE < 500 estable; 500-1000 moderado; 1000-2000
+significativo; > 2000 alto) modulados por confirmación del modelo
+(weathercode 95/96/99) y por humedad relativa (atmósfera seca reduce
+probabilidad de convección sostenida).
+
+**Limitación conocida**: los umbrales de CAPE están calibrados para
+latitudes medias en general, no específicamente para Pirineo. En uso
+real (verano 2026) comparar con observaciones efectivas de tormenta
+(rayos AEMET, observación directa) y recalibrar si hay sesgo
+sistemático. La regla operativa "no estar arriba después de las 13:00
+con tormenta probable" prima sobre el valor numérico exacto del índice.
+
+**Alternativa no escogida**: usar `lifted_index` o `convective_inhibition`
+si Open-Meteo los expusiera. Actualmente no están en el set público de
+ARPEGE. Si se incorporan en v0.2, integrarlos.

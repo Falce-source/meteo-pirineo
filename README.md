@@ -15,7 +15,7 @@ Herramienta personal de evaluación meteorológica para actividades de montaña 
 | 1      | Bootstrap del repo, config de zonas/actividades, cliente Open-Meteo    | ✅      |
 | 2      | Lógica de evaluación por actividad + orquestador + tabla por consola   | ✅      |
 | 3      | Render HTML estático + despliegue manual en GitHub Pages               | ✅      |
-| 4      | Índice de tormenta + GitHub Actions diario                             | ⏳      |
+| 4      | Índice de tormenta + GitHub Actions diario                             | ✅      |
 
 ## Zonas y actividades
 
@@ -47,7 +47,8 @@ meteo-pirineo/
 │   └── actividades.yaml   # Actividades y umbrales (variable + agg + ámbar/rojo)
 ├── src/
 │   ├── fetch.py           # Cliente Open-Meteo (5 días, horario, sin clave)
-│   ├── derivadas.py       # Variables calculadas localmente (FLH por lapse rate)
+│   ├── derivadas.py       # Variables calculadas localmente (FLH, índice tormenta)
+│   ├── tormenta.py        # Índice 0-3 de tormenta a partir de CAPE/WMO/precip/humedad
 │   ├── evaluar.py         # Lógica pura: previsión + actividad -> semáforo + motivos
 │   ├── render.py          # HTML estático autocontenido para GitHub Pages
 │   └── main.py            # Orquestador: fetch + enriquecer + evaluación + tabla/HTML
@@ -142,6 +143,8 @@ El HTML es completamente autocontenido (CSS y JS inline, cero recursos externos)
 > **Aludes.** Esta herramienta NO predice riesgo de aludes. Para condiciones nivológicas, consulta siempre el boletín oficial enlazado en cabecera (Lauegi para el Pirineo catalán, AEMET para el aragonés). La regla "Nevada reciente 48 h" en skimo solo dispara un aviso de "consultar boletín externo", nunca un semáforo verde sin reservas.
 >
 > **Cero térmico estimado.** El cero térmico (`freezing_level_height`) no está disponible en el modelo ARPEGE via Open-Meteo. Se calcula localmente a partir de la temperatura a 2 m y un gradiente adiabático estándar de 6.5 K/km. Es una aproximación de primer orden, suficiente para una alerta cualitativa. En el output, los valores marcados como `[estimado]` provienen de este cálculo, no del modelo. Si tras uso real se observa discrepancia significativa con AEMET montaña, evaluar añadir una fuente secundaria de datos solo para esta variable.
+>
+> **Índice de tormenta.** Se calcula localmente a partir de CAPE, weathercode, precipitación y humedad relativa. Es una aproximación; en uso real conviene comparar con observaciones efectivas de actividad eléctrica (AEMET) y recalibrar umbrales si fuera necesario. Para verano 2026 se mantienen los valores de literatura general. La regla operativa "no estar arriba después de las 13:00 con tormenta probable" prima sobre el valor numérico exacto.
 
 Limitaciones adicionales registradas:
 
