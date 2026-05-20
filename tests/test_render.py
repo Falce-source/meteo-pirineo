@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
 
-from src.evaluar import EvaluacionDia, MotivoSemaforo
+from src.evaluar import EvaluacionDia, MotivoSemaforo, Ventana, VentanasDia
 from src.render import renderizar_html
 
 
@@ -250,3 +250,121 @@ def test_html_no_referencia_recursos_externos(tmp_path, paquetes_basicos):
             assert not src.startswith(("http://", "https://", "//")), (
                 f"script externo: {src}"
             )
+
+
+# ---------- Tests Semana 5: ventanas óptimas en modal (ADR-007) ----------
+
+@pytest.fixture
+def paquetes_con_ventanas() -> dict:
+    """Estructura con tres tipos de evaluación: día homogéneo,
+    oportunidad (semáforo global AMBAR pero mejor ventana VERDE),
+    y una actividad sin ventana_minima_h declarada."""
+    zona = ZONAS_FAKE[0]
+    fecha = FECHAS_FAKE[0]
+
+    # 1) Celda HOMOGÉNEA: skimo, todas las ventanas VERDE.
+    ev_homogenea = _eval(zona["id"], "skimo", fecha, "VERDE")
+    ev_homogenea.ventanas = VentanasDia(
+        mejor=Ventana(inicio=7, fin=11, semaforo="VERDE"),
+        peor=Ventana(inicio=7, fin=11, semaforo="VERDE"),
+        duracion_h=4,
+    )
+
+    # 2) Celda OPORTUNIDAD: alpinismo_invierno, semáforo global AMBAR
+    #    pero hay ventana VERDE matinal.
+    ev_oportunidad = _eval(
+        zona["id"], "alpinismo_invierno", fecha, "AMBAR",
+        motivos=[
+            MotivoSemaforo(
+                descripcion="Nubosidad media en cota",
+                variable="cloudcover",
+                valor_observado=75.0,
+                umbral_disparado=70.0,
+                nivel="AMBAR",
+                unidad="%",
+                op=">",
+            )
+        ],
+    )
+    ev_oportunidad.ventanas = VentanasDia(
+        mejor=Ventana(inicio=7, fin=13, semaforo="VERDE"),
+        peor=Ventana(inicio=12, fin=18, semaforo="AMBAR"),
+        duracion_h=6,
+    )
+
+    # 3) Celda SIN VENTANAS: actividad fake sin ventana_minima_h.
+    ev_sin = _eval(zona["id"], "trail", fecha, "VERDE")
+    ev_sin.ventanas = None  # explícito: actividad no declara ventana_minima_h
+
+    # Rellenamos el resto con celdas vacías (verde sin ventanas).
+    evs = []
+    map_celdas = {
+        ("skimo", fecha): ev_homogenea,
+        ("alpinismo_invierno", fecha): ev_oportunidad,
+        ("trail", fecha): ev_sin,
+    }
+    for f in FECHAS_FAKE:
+        for act in ACTIVIDADES_FAKE:
+            ev = map_celdas.get((act["id"], f))
+            if ev is None:
+                ev = _eval(zona["id"], act["id"], f, "VERDE")
+            evs.append(ev)
+    return {zona["id"]: {"zona": zona, "evaluaciones": evs}}
+
+
+def test_html_modal_muestra_ventanas(tmp_path, paquetes_con_ventanas):
+    """Una celda con ventanas serializa los datos en data-ventanas y el
+    JS contiene la plantilla "Mejor ventana ... HH:MM"."""
+    contenido, _ = _render_to(tmp_path, paquetes_con_ventanas)
+    soup = BeautifulSoup(contenido, "html.parser")
+
+    # data-ventanas en la celda de oportunidad.
+    celda = soup.find(id="benasque-alpinismo_invierno-2026-05-19")
+    raw = celda.get("data-ventanas")
+    assert raw and raw != "null"
+    ventanas = json.loads(raw)
+    assert ventanas["duracion_h"] == 6
+    assert ventanas["mejor"]["inicio"] == 7
+    assert ventanas["mejor"]["fin"] == 13
+    assert ventanas["mejor"]["semaforo"] == "VERDE"
+    assert ventanas["peor"]["semaforo"] == "AMBAR"
+
+    # Plantilla JS contiene "Mejor ventana" y formato HH:00.
+    assert "Mejor ventana" in contenido
+    assert "Peor ventana" in contenido
+    # El helper fmtHora produce "HH:00" con padStart.
+    assert "padStart(2, '0')" in contenido
+
+
+def test_html_modal_omite_ventanas_si_actividad_no_las_declara(
+    tmp_path, paquetes_con_ventanas
+):
+    """Una celda cuya evaluación tiene ventanas=None lleva
+    data-ventanas="null"; el JS no renderiza la sección."""
+    contenido, _ = _render_to(tmp_path, paquetes_con_ventanas)
+    soup = BeautifulSoup(contenido, "html.parser")
+
+    celda = soup.find(id="benasque-trail-2026-05-19")
+    raw = celda.get("data-ventanas")
+    assert raw == "null", f"esperaba null, salió {raw!r}"
+
+    # El JS comprueba `if (ventanas && ventanas.mejor && ventanas.peor)`.
+    assert "ventanas && ventanas.mejor" in contenido
+
+
+def test_html_modal_dia_homogeneo(tmp_path, paquetes_con_ventanas):
+    """Cuando mejor==peor (mismo inicio/fin/semáforo), el JS muestra
+    'Todo el día homogéneo' en lugar de las dos líneas."""
+    contenido, _ = _render_to(tmp_path, paquetes_con_ventanas)
+    soup = BeautifulSoup(contenido, "html.parser")
+
+    celda = soup.find(id="benasque-skimo-2026-05-19")
+    raw = celda.get("data-ventanas")
+    ventanas = json.loads(raw)
+    # mejor y peor deben coincidir en este caso homogéneo.
+    assert ventanas["mejor"]["inicio"] == ventanas["peor"]["inicio"]
+    assert ventanas["mejor"]["fin"] == ventanas["peor"]["fin"]
+    assert ventanas["mejor"]["semaforo"] == ventanas["peor"]["semaforo"]
+
+    # Plantilla JS contiene el texto "Todo el día homogéneo".
+    assert "Todo el día homogéneo" in contenido

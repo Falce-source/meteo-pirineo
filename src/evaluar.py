@@ -9,11 +9,12 @@ Reglas resumen:
   + agregación + operador + umbral(es) ámbar/rojo.
 - El peor componente determina el semáforo del día: ROJO > AMBAR > VERDE.
 - Reglas con ``op == "informativo"`` solo reportan, no afectan al color.
-- Variables derivadas (snowfall_48h_previas, indice_tormenta) se saltan
-  y se añade un aviso pendiente.
+- Variables derivadas pendientes (snowfall_48h_previas) se saltan y se
+  añade un aviso pendiente.
 - Si la previsión no tiene datos para la fecha (más allá del horizonte
-  del modelo), el semáforo es ``SIN_DATOS`` (extensión a la spec — ver
-  ADR-003).
+  del modelo), el semáforo es ``SIN_DATOS`` (ver ADR-003).
+- Mejor/peor ventana del día se calculan como sub-evaluación con
+  ventana deslizante (ADR-007).
 """
 
 from __future__ import annotations
@@ -77,6 +78,26 @@ class MotivoSemaforo:
 
 
 @dataclass
+class Ventana:
+    """Sub-evaluación de una franja arbitraria del día."""
+
+    inicio: int                              # hora de inicio (0-23), inclusiva
+    fin: int                                 # hora de fin (exclusiva)
+    semaforo: str                            # VERDE | AMBAR | ROJO | SIN_DATOS
+    motivos: list[MotivoSemaforo] = field(default_factory=list)
+    datos_clave: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class VentanasDia:
+    """Resumen de la mejor y peor sub-ventana del día (ADR-007)."""
+
+    mejor: Ventana | None = None
+    peor: Ventana | None = None
+    duracion_h: int = 0
+
+
+@dataclass
 class EvaluacionDia:
     zona_id: str
     actividad_id: str
@@ -85,6 +106,9 @@ class EvaluacionDia:
     motivos: list[MotivoSemaforo] = field(default_factory=list)
     datos_clave: dict[str, float] = field(default_factory=dict)
     avisos: list[str] = field(default_factory=list)
+    # Mejor/peor sub-ventana del día (ADR-007). ``None`` si la actividad
+    # no declara ``ventana_minima_h`` en su configuración.
+    ventanas: VentanasDia | None = None
 
 
 def cargar_actividades(
@@ -225,64 +249,50 @@ def _evaluar_regla_cualquier_franja(
     return True, motivo
 
 
-def evaluar_dia(
-    prevision: PrevisionMeteo,
+def _evaluar_reglas_franja(
+    df: pd.DataFrame,
     actividad: dict[str, Any],
     fecha: date,
-) -> EvaluacionDia:
-    """Evalúa una actividad concreta en una zona/fecha dadas."""
-    zona = prevision.zona
-    df = prevision.horario
-    franja_act = tuple(
-        actividad.get("franja_horaria", FRANJA_DEFAULT)
-    )  # type: ignore[assignment]
+    franja_act: tuple[int, int],
+) -> tuple[str, list[MotivoSemaforo], dict[str, float]]:
+    """Núcleo de evaluación: aplica todas las reglas de la actividad
+    usando ``franja_act`` como franja activa.
 
+    Diseñado para ser reutilizable: ``evaluar_dia`` lo invoca con la
+    franja_horaria completa de la actividad; ``calcular_ventanas_dia``
+    lo invoca con sub-franjas deslizantes.
+
+    Reglas con ``franja_especifica`` se intersectan con ``franja_act``.
+    Si la intersección es vacía, la regla no se aplica.
+
+    No genera avisos (los gestiona ``evaluar_dia``).
+    """
     motivos: list[MotivoSemaforo] = []
     datos_clave: dict[str, float] = {}
-    avisos: list[str] = []
-
-    # Aviso de aludes (cabecera de zona).
-    if actividad.get("requiere_aviso_aludes") and fecha.month in MESES_AVISO_ALUDES:
-        bol = zona.get("boletin_aludes") or {}
-        nombre = bol.get("nombre")
-        url = bol.get("url")
-        if nombre and url:
-            avisos.append(
-                f"Consultar boletín de aludes oficial: {nombre} {url}"
-            )
-
     agregaciones_intentadas = 0
     agregaciones_con_datos = 0
 
     for regla in actividad.get("reglas", []):
         variable = regla["variable"]
-        descripcion = regla.get("descripcion", variable)
-
-        # 1) Variables derivadas no implementadas en Semana 2.
         if variable in VARIABLES_DERIVADAS_PENDIENTES:
-            avisos.append(
-                f"Regla pendiente: {descripcion} "
-                "(variable derivada no implementada)"
-            )
             continue
-
-        # 2) Variable no presente en el DataFrame.
         if variable not in df.columns:
-            avisos.append(
-                f"Regla pendiente: {descripcion} "
-                f"(variable '{variable}' no disponible en datos)"
-            )
             continue
 
-        # 3) Resolver franja.
-        franja = tuple(regla.get("franja_especifica", franja_act))
+        # Resolver franja: intersección de franja_especifica con franja_act.
+        if "franja_especifica" in regla:
+            fe = regla["franja_especifica"]
+            inicio = max(int(fe[0]), franja_act[0])
+            fin = min(int(fe[1]), franja_act[1])
+            if inicio > fin:
+                continue  # no overlap
+            franja = (inicio, fin)
+        else:
+            franja = franja_act
 
         sub = _filtrar_franja(df, fecha, franja)
         serie = sub[variable] if not sub.empty else pd.Series(dtype=float)
 
-        # Detección genérica: si existe la columna ``<variable>_estimada``
-        # y al menos una fila de la franja es True, el motivo derivado
-        # de esa regla se marca como estimado.
         flag_col = f"{variable}_estimada"
         es_estimada = False
         if flag_col in df.columns and not sub.empty:
@@ -290,7 +300,6 @@ def evaluar_dia(
 
         agg_name = regla.get("agg")
 
-        # 4) Caso especial: cualquier_franja.
         if agg_name == "cualquier_franja":
             agregaciones_intentadas += 1
             resultado, motivo = _evaluar_regla_cualquier_franja(serie, regla)
@@ -304,12 +313,7 @@ def evaluar_dia(
                 motivos.append(motivo)
             continue
 
-        # 5) Agregaciones pandas estándar.
         if agg_name not in AGREGACIONES:
-            avisos.append(
-                f"Regla pendiente: {descripcion} "
-                f"(agregación '{agg_name}' no soportada)"
-            )
             continue
 
         agregaciones_intentadas += 1
@@ -323,7 +327,6 @@ def evaluar_dia(
                 motivo.estimada = True
             motivos.append(motivo)
 
-    # Determinar semáforo final.
     niveles = {m.nivel for m in motivos}
     if agregaciones_intentadas > 0 and agregaciones_con_datos == 0:
         semaforo = "SIN_DATOS"
@@ -334,6 +337,142 @@ def evaluar_dia(
     else:
         semaforo = "VERDE"
 
+    return semaforo, motivos, datos_clave
+
+
+def _construir_avisos(
+    zona: dict[str, Any],
+    actividad: dict[str, Any],
+    fecha: date,
+    df: pd.DataFrame,
+) -> list[str]:
+    """Genera la lista de avisos a nivel de zona/actividad/día.
+
+    Incluye aviso de aludes (estacional) y "regla pendiente …" para
+    cada regla con variable derivada no implementada o ausente del
+    DataFrame.
+    """
+    avisos: list[str] = []
+
+    if actividad.get("requiere_aviso_aludes") and fecha.month in MESES_AVISO_ALUDES:
+        bol = zona.get("boletin_aludes") or {}
+        nombre = bol.get("nombre")
+        url = bol.get("url")
+        if nombre and url:
+            avisos.append(
+                f"Consultar boletín de aludes oficial: {nombre} {url}"
+            )
+
+    for regla in actividad.get("reglas", []):
+        variable = regla["variable"]
+        descripcion = regla.get("descripcion", variable)
+        if variable in VARIABLES_DERIVADAS_PENDIENTES:
+            avisos.append(
+                f"Regla pendiente: {descripcion} "
+                "(variable derivada no implementada)"
+            )
+        elif variable not in df.columns:
+            avisos.append(
+                f"Regla pendiente: {descripcion} "
+                f"(variable '{variable}' no disponible en datos)"
+            )
+
+    return avisos
+
+
+# Orden de "calidad" para escoger mejor/peor ventana. Lower es mejor.
+_RANK_MEJOR: dict[str, int] = {"VERDE": 0, "AMBAR": 1, "ROJO": 2, "SIN_DATOS": 3}
+# Orden de "gravedad" para escoger peor. Higher es peor; en
+# ``calcular_ventanas_dia`` usamos -gravedad para tomar el min.
+_RANK_GRAVEDAD: dict[str, int] = {"SIN_DATOS": 0, "VERDE": 1, "AMBAR": 2, "ROJO": 3}
+
+
+def calcular_ventanas_dia(
+    prevision: PrevisionMeteo,
+    actividad: dict[str, Any],
+    fecha: date,
+) -> VentanasDia:
+    """Calcula mejor y peor sub-ventana del día.
+
+    Ventana deslizante de paso 1 h sobre la franja horaria de la
+    actividad. Cada posición se evalúa con las mismas reglas que el
+    día completo.
+
+    - Empate en mejor o peor: se prefiere la sub-ventana más temprana.
+    - Si la actividad no declara ``ventana_minima_h``: devuelve
+      ``VentanasDia(mejor=None, peor=None, duracion_h=0)``.
+    - Si la duración pedida es >= franja_horaria: la franja completa
+      es la única ventana (``mejor == peor``).
+    """
+    duracion_h = actividad.get("ventana_minima_h")
+    if duracion_h is None:
+        return VentanasDia(mejor=None, peor=None, duracion_h=0)
+    duracion_h = int(duracion_h)
+
+    franja_act = actividad.get("franja_horaria", list(FRANJA_DEFAULT))
+    franja_inicio, franja_fin = int(franja_act[0]), int(franja_act[1])
+    franja_size = franja_fin - franja_inicio + 1  # ambos extremos inclusivos
+
+    df = prevision.horario
+
+    # Caso degenerado: ventana >= franja → una única ventana.
+    if duracion_h >= franja_size:
+        sem, motivos, dc = _evaluar_reglas_franja(
+            df, actividad, fecha, (franja_inicio, franja_fin)
+        )
+        ventana = Ventana(
+            inicio=franja_inicio,
+            fin=franja_inicio + duracion_h,  # exclusiva
+            semaforo=sem,
+            motivos=motivos,
+            datos_clave=dc,
+        )
+        return VentanasDia(mejor=ventana, peor=ventana, duracion_h=duracion_h)
+
+    ventanas: list[Ventana] = []
+    last_start = franja_fin - duracion_h + 1
+    for inicio in range(franja_inicio, last_start + 1):
+        fin_inclusivo = inicio + duracion_h - 1
+        sem, motivos, dc = _evaluar_reglas_franja(
+            df, actividad, fecha, (inicio, fin_inclusivo)
+        )
+        ventanas.append(
+            Ventana(
+                inicio=inicio,
+                fin=inicio + duracion_h,  # exclusiva
+                semaforo=sem,
+                motivos=motivos,
+                datos_clave=dc,
+            )
+        )
+
+    mejor = min(
+        ventanas, key=lambda v: (_RANK_MEJOR[v.semaforo], v.inicio)
+    )
+    peor = min(
+        ventanas, key=lambda v: (-_RANK_GRAVEDAD[v.semaforo], v.inicio)
+    )
+    return VentanasDia(mejor=mejor, peor=peor, duracion_h=duracion_h)
+
+
+def evaluar_dia(
+    prevision: PrevisionMeteo,
+    actividad: dict[str, Any],
+    fecha: date,
+) -> EvaluacionDia:
+    """Evalúa una actividad concreta en una zona/fecha dadas."""
+    zona = prevision.zona
+    df = prevision.horario
+    franja_act = tuple(
+        actividad.get("franja_horaria", FRANJA_DEFAULT)
+    )  # type: ignore[assignment]
+
+    avisos = _construir_avisos(zona, actividad, fecha, df)
+    semaforo, motivos, datos_clave = _evaluar_reglas_franja(
+        df, actividad, fecha, franja_act
+    )
+    ventanas = calcular_ventanas_dia(prevision, actividad, fecha)
+
     return EvaluacionDia(
         zona_id=zona["id"],
         actividad_id=actividad["id"],
@@ -342,4 +481,5 @@ def evaluar_dia(
         motivos=motivos,
         datos_clave=datos_clave,
         avisos=avisos,
+        ventanas=ventanas,
     )

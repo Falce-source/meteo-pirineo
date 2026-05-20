@@ -20,6 +20,12 @@
 # se supera el umbral).
 #
 # Franja horaria por defecto: 07:00-17:00 hora local.
+#
+# Cada actividad declara una ventana_minima_h: duración mínima de la
+# actividad en horas. Se usa para calcular la "mejor ventana del día"
+# (subfranja continua de esa duración con mejor semáforo) y mostrarla
+# en el detalle del modal HTML. Sirve para identificar ventanas
+# favorables en días con semáforo global AMBAR o ROJO.
 
 actividades:
 
@@ -28,6 +34,7 @@ actividades:
     estacion_principal: invierno
     requiere_aviso_aludes: true
     franja_horaria: [7, 17]
+    ventana_minima_h: 4
     reglas:
       - variable: windspeed_10m
         agg: mean
@@ -66,6 +73,7 @@ actividades:
     estacion_principal: invierno
     requiere_aviso_aludes: true
     franja_horaria: [7, 17]
+    ventana_minima_h: 6
     reglas:
       - variable: windspeed_10m
         agg: mean
@@ -102,6 +110,7 @@ actividades:
     estacion_principal: verano
     requiere_aviso_aludes: false
     franja_horaria: [7, 17]
+    ventana_minima_h: 6
     reglas:
       - variable: indice_tormenta
         agg: cualquier_franja
@@ -133,6 +142,7 @@ actividades:
     estacion_principal: cualquiera
     requiere_aviso_aludes: false
     franja_horaria: [7, 17]
+    ventana_minima_h: 2
     reglas:
       - variable: temperature_2m
         agg: max
@@ -164,6 +174,7 @@ actividades:
     estacion_principal: cualquiera
     requiere_aviso_aludes: false
     franja_horaria: [7, 17]
+    ventana_minima_h: 3
     reglas:
       - variable: windspeed_10m
         agg: mean

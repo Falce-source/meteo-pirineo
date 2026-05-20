@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from src.derivadas import enriquecer_con_derivadas
-from src.evaluar import cargar_actividades, evaluar_dia
+from src.evaluar import cargar_actividades, calcular_ventanas_dia, evaluar_dia
 from src.fetch import HOURLY_VARIABLES, PrevisionMeteo
 
 
@@ -528,3 +528,224 @@ def test_regla_tormenta_no_dispara_en_franja_matinal_estival(
         f"motivos={ev_trail.motivos}"
     )
     assert motivos_tormenta_trail[0].nivel == "ROJO"
+
+
+# ---------- Tests Semana 5: mejor/peor ventana del día (ADR-007) ----------
+
+def test_mejor_ventana_dia_homogeneo(actividades, zona_benasque):
+    """Día con condiciones constantes: mejor y peor coinciden."""
+    fecha = date(2026, 6, 15)
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [15.0] * 24,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": [20.0] * 24,
+            "cloudcover": [20.0] * 24,
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [50.0] * 24,
+            "cape": [200.0] * 24,
+            "weathercode": [1] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    skimo = _actividad(actividades, "skimo")
+    ev = evaluar_dia(prev, skimo, fecha)
+
+    assert ev.ventanas is not None
+    assert ev.ventanas.mejor is not None
+    assert ev.ventanas.peor is not None
+    # Ambas con el mismo semáforo (todo VERDE en este escenario).
+    assert ev.ventanas.mejor.semaforo == ev.ventanas.peor.semaforo == "VERDE"
+    assert ev.ventanas.duracion_h == 4  # skimo declara ventana_minima_h=4
+
+
+def test_mejor_ventana_destaca_subfranja_favorable(actividades, zona_benasque):
+    """Viento 60 km/h solo 14-17h (fuera del rango VERDE matinal).
+    Skimo (ventana 4h): mejor ventana matinal VERDE, peor incluye horas
+    de viento con motivos disparados.
+    """
+    fecha = date(2026, 2, 15)
+    viento = [10.0] * 24
+    rafagas = [20.0] * 24
+    for h in (14, 15, 16, 17):
+        viento[h] = 60.0
+        rafagas[h] = 80.0
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [0.0] * 24,
+            "windspeed_10m": viento,
+            "windgusts_10m": rafagas,
+            "cloudcover": [30.0] * 24,
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [50.0] * 24,
+            "cape": [100.0] * 24,
+            "weathercode": [1] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    skimo = _actividad(actividades, "skimo")
+    ev = evaluar_dia(prev, skimo, fecha)
+
+    assert ev.ventanas is not None
+    mejor = ev.ventanas.mejor
+    peor = ev.ventanas.peor
+    assert mejor is not None and peor is not None
+
+    # La mejor ventana debe ser VERDE (matinal, sin viento).
+    assert mejor.semaforo == "VERDE", (
+        f"mejor ventana esperaba VERDE, salió {mejor.semaforo}"
+    )
+    # Empate temprano: la ventana más temprana es 07:00-11:00.
+    assert mejor.inicio == 7
+    assert mejor.fin == 11
+
+    # La peor ventana debe incluir alguna hora con viento alto y disparar
+    # al menos motivo ROJO.
+    assert peor.semaforo == "ROJO", (
+        f"peor ventana esperaba ROJO, salió {peor.semaforo}"
+    )
+    # La peor ventana debe acabar más tarde que la mejor.
+    assert peor.fin > mejor.fin
+
+
+def test_peor_ventana_es_la_mas_estricta(actividades, zona_benasque):
+    """Dos sub-ventanas con motivos diferentes: ROJO > AMBAR. Trail (ventana 2h)."""
+    fecha = date(2026, 6, 15)
+    # Construir un día con dos focos: AMBAR en mediodía (lluvia ligera),
+    # ROJO en tarde (lluvia intensa).
+    precip = [0.0] * 24
+    for h in (11, 12):
+        precip[h] = 6.0   # > umbral ámbar 5 mm/h (trail) → AMBAR
+    for h in (15, 16):
+        precip[h] = 20.0  # bien por encima de cualquier umbral
+    temps = [20.0] * 24
+    for h in (15, 16):
+        temps[h] = 36.0   # > umbral rojo 35 °C trail → ROJO
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": temps,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": [20.0] * 24,
+            "cloudcover": [30.0] * 24,
+            "precipitation": precip,
+            "relative_humidity_2m": [55.0] * 24,
+            "cape": [100.0] * 24,
+            "weathercode": [1] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    trail = _actividad(actividades, "trail")
+    ev = evaluar_dia(prev, trail, fecha)
+
+    assert ev.ventanas is not None
+    assert ev.ventanas.peor is not None
+    # La peor debe contener una de las horas ROJO (15-16) y disparar
+    # motivo de temperature_2m o precipitation con nivel ROJO.
+    peor = ev.ventanas.peor
+    assert peor.semaforo == "ROJO"
+    niveles = {m.nivel for m in peor.motivos}
+    assert "ROJO" in niveles
+
+
+def test_ventana_no_se_calcula_si_no_declarada(actividades, zona_benasque):
+    """Actividad sin ventana_minima_h: ev.ventanas.mejor/peor son None."""
+    fecha = date(2026, 6, 15)
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [15.0] * 24,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": [20.0] * 24,
+            "cloudcover": [20.0] * 24,
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [50.0] * 24,
+            "cape": [100.0] * 24,
+            "weathercode": [1] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    # Construimos un fake actividad sin ventana_minima_h a partir de skimo.
+    skimo = _actividad(actividades, "skimo")
+    skimo_sin_ventana = {k: v for k, v in skimo.items() if k != "ventana_minima_h"}
+
+    ev = evaluar_dia(prev, skimo_sin_ventana, fecha)
+    assert ev.ventanas is not None  # dataclass siempre presente
+    assert ev.ventanas.mejor is None
+    assert ev.ventanas.peor is None
+    assert ev.ventanas.duracion_h == 0
+
+
+def test_ventana_mayor_que_franja_caso_degenerado(actividades, zona_benasque):
+    """ventana_minima_h=12 sobre franja [7,17] (11 h): mejor == peor == franja."""
+    fecha = date(2026, 6, 15)
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [15.0] * 24,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": [20.0] * 24,
+            "cloudcover": [20.0] * 24,
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [50.0] * 24,
+            "cape": [100.0] * 24,
+            "weathercode": [1] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    # Construimos un fake actividad: trail con ventana_minima_h=12.
+    trail = _actividad(actividades, "trail")
+    trail_largo = dict(trail)
+    trail_largo["ventana_minima_h"] = 12
+
+    v = calcular_ventanas_dia(prev, trail_largo, fecha)
+    assert v.mejor is not None and v.peor is not None
+    assert v.mejor.inicio == v.peor.inicio == 7
+    assert v.mejor.semaforo == v.peor.semaforo
+    assert v.duracion_h == 12
+
+
+def test_ventana_empate_prefiere_temprana(actividades, zona_benasque):
+    """Día completamente homogéneo: hay varias ventanas con el mismo
+    semáforo; la mejor (y la peor) escogidas deben ser la más temprana
+    de cada categoría — en este caso la primera (07:xx)."""
+    fecha = date(2026, 6, 15)
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [15.0] * 24,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": [20.0] * 24,
+            "cloudcover": [20.0] * 24,
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [50.0] * 24,
+            "cape": [100.0] * 24,
+            "weathercode": [1] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    skimo = _actividad(actividades, "skimo")
+    ev = evaluar_dia(prev, skimo, fecha)
+
+    # Empate total: skimo ventana_minima_h=4, franja [7,17] -> 7 ventanas
+    # posibles (start 7..13). Todas VERDE. Tanto mejor como peor escogen
+    # la más temprana: start=7.
+    assert ev.ventanas is not None
+    assert ev.ventanas.mejor is not None
+    assert ev.ventanas.peor is not None
+    assert ev.ventanas.mejor.inicio == 7
+    assert ev.ventanas.peor.inicio == 7

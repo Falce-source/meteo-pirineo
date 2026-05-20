@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from src.evaluar import EvaluacionDia
+from src.evaluar import EvaluacionDia, VentanasDia
 
 # Glifos accesibles: forma + color. Coinciden con la paleta CSS.
 GLIFOS_HTML: dict[str, str] = {
@@ -172,6 +172,42 @@ dialog#detalle::backdrop { background: rgba(15, 23, 42, 0.45); }
 .nivel-ROJO  { color: #dc2626; font-weight: 600; }
 .nivel-AMBAR { color: #d97706; font-weight: 600; }
 .nivel-INFORMATIVO { color: #2563eb; font-weight: 500; }
+
+.ventanas {
+  margin-top: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 6px;
+  background: #f9fafb;
+  border-left: 3px solid #d1d5db;
+}
+.ventanas.oportunidad {
+  border-left-color: #16a34a;
+  background: #f0fdf4;
+}
+.ventanas h4 { margin: 0 0 0.3rem; }
+.ventanas ul { padding-left: 0; list-style: none; margin: 0; }
+.ventanas li {
+  padding: 0.18rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+.celda-inline {
+  display: inline-flex;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 4px;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex: 0 0 auto;
+}
+.celda-inline.verde     { background: #dcfce7; color: #16a34a; }
+.celda-inline.ambar     { background: #fef3c7; color: #d97706; }
+.celda-inline.rojo      { background: #fee2e2; color: #dc2626; }
+.celda-inline.sin-datos { background: #f5f5f5; color: #737373; }
 button#detalle-cerrar {
   margin-top: 1rem;
   background: #1f2937;
@@ -201,6 +237,9 @@ JS_INLINE = """\
   const cuerpo = document.getElementById('detalle-cuerpo');
   const cerrar = document.getElementById('detalle-cerrar');
 
+  const GLIFOS = {VERDE: '✓', AMBAR: '!', ROJO: '✗', SIN_DATOS: '–'};
+  const CLASES = {VERDE: 'verde', AMBAR: 'ambar', ROJO: 'rojo', SIN_DATOS: 'sin-datos'};
+
   function escapeHTML(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
@@ -224,6 +263,16 @@ JS_INLINE = """\
       : m.umbral_disparado.toFixed(0);
     const unidad = m.unidad ? ' ' + m.unidad : '';
     return opStr + v + unidad;
+  }
+
+  function fmtHora(h) {
+    return String(h).padStart(2, '0') + ':00';
+  }
+
+  function glifoInline(semaforo) {
+    const cls = CLASES[semaforo] || 'sin-datos';
+    const g = GLIFOS[semaforo] || '?';
+    return '<span class="celda-inline ' + cls + '">' + g + '</span>';
   }
 
   document.addEventListener('click', function (e) {
@@ -269,6 +318,40 @@ JS_INLINE = """\
       });
       html += '</dl>';
     }
+
+    // Ventanas óptimas (ADR-007). Solo si la actividad declara ventana_minima_h.
+    const ventanas = JSON.parse(btn.dataset.ventanas || 'null');
+    if (ventanas && ventanas.mejor && ventanas.peor) {
+      const mejor = ventanas.mejor;
+      const peor = ventanas.peor;
+      const homogeneo = (
+        mejor.inicio === peor.inicio
+        && mejor.fin === peor.fin
+        && mejor.semaforo === peor.semaforo
+      );
+      const esOportunidad = (
+        !homogeneo
+        && mejor.semaforo === 'VERDE'
+        && (semaforo === 'AMBAR' || semaforo === 'ROJO')
+      );
+      const cls = esOportunidad ? 'ventanas oportunidad' : 'ventanas';
+      let vh = '<section class="' + cls + '">';
+      vh += '<h4>Ventanas óptimas (ventana mínima: ' + escapeHTML(String(ventanas.duracion_h)) + ' h)</h4>';
+      vh += '<ul>';
+      if (homogeneo) {
+        vh += '<li><strong>Todo el día homogéneo:</strong> ' + glifoInline(mejor.semaforo) + '</li>';
+      } else {
+        vh += '<li><strong>Mejor ventana:</strong> '
+          + escapeHTML(fmtHora(mejor.inicio)) + '–' + escapeHTML(fmtHora(mejor.fin))
+          + ' ' + glifoInline(mejor.semaforo) + '</li>';
+        vh += '<li><strong>Peor ventana:</strong> '
+          + escapeHTML(fmtHora(peor.inicio)) + '–' + escapeHTML(fmtHora(peor.fin))
+          + ' ' + glifoInline(peor.semaforo) + '</li>';
+      }
+      vh += '</ul></section>';
+      html += vh;
+    }
+
     if (!html) html = '<p>Sin motivos ni avisos disparados para este día.</p>';
     cuerpo.innerHTML = html;
 
@@ -311,6 +394,25 @@ def _attr(value: Any) -> str:
 def _e(text: Any) -> str:
     """HTML-escape de texto plano."""
     return html.escape(str(text), quote=True)
+
+
+def _serializar_ventanas(v: VentanasDia | None) -> dict[str, Any] | None:
+    """Serializa VentanasDia a dict listo para JSON (solo campos display)."""
+    if v is None or v.mejor is None or v.peor is None:
+        return None
+    return {
+        "duracion_h": v.duracion_h,
+        "mejor": {
+            "inicio": v.mejor.inicio,
+            "fin": v.mejor.fin,
+            "semaforo": v.mejor.semaforo,
+        },
+        "peor": {
+            "inicio": v.peor.inicio,
+            "fin": v.peor.fin,
+            "semaforo": v.peor.semaforo,
+        },
+    }
 
 
 # ----------------------------------------------------------------------
@@ -382,6 +484,7 @@ def _render_celda(
     motivos_data = [asdict(m) for m in evaluacion.motivos]
     avisos_data = list(evaluacion.avisos)
     datos_clave_data = {k: round(float(v), 3) for k, v in evaluacion.datos_clave.items()}
+    ventanas_data = _serializar_ventanas(evaluacion.ventanas)
 
     cell_id = f"{zona['id']}-{actividad['id']}-{fecha.isoformat()}"
     aria = (
@@ -402,7 +505,8 @@ def _render_celda(
         f'data-semaforo="{_e(evaluacion.semaforo)}" '
         f'data-motivos="{_attr(motivos_data)}" '
         f'data-avisos="{_attr(avisos_data)}" '
-        f'data-datos-clave="{_attr(datos_clave_data)}"'
+        f'data-datos-clave="{_attr(datos_clave_data)}" '
+        f'data-ventanas="{_attr(ventanas_data)}"'
         f'>{glifo}</button>'
         f'</td>'
     )
