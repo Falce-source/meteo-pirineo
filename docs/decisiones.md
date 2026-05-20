@@ -133,3 +133,50 @@ con tormenta probable" prima sobre el valor numérico exacto del índice.
 **Alternativa no escogida**: usar `lifted_index` o `convective_inhibition`
 si Open-Meteo los expusiera. Actualmente no están en el set público de
 ARPEGE. Si se incorporan en v0.2, integrarlos.
+
+## ADR-007: Mejor ventana del día como dato derivado (2026-05-20)
+
+**Decisión**: añadir "mejor ventana del día" y "peor ventana del día" como
+sub-evaluaciones derivadas mostradas en el modal de detalle. No cambiar la
+unidad principal de evaluación (sigue siendo semáforo por día). El tamaño
+de ventana es configurable por actividad en actividades.yaml mediante el
+campo `ventana_minima_h`.
+
+**Contexto**: feedback externo (ver docs/feedback_externo.md, Alicia) identificó
+que la agregación a franja 07:00-17:00 oculta ventanas favorables dentro de
+días con semáforo global AMBAR o ROJO. Para una actividad de 2-3h, el dato
+operativo útil no es "el día es ámbar" sino "hay ventana de 3h VERDE entre
+las 08:00 y las 11:00".
+
+**Implementación**: ventana deslizante de paso 1h sobre la franja_horaria
+de la actividad. Cada posición se evalúa con las mismas reglas que el día
+completo. Se reporta la mejor y la peor sub-ventana.
+
+**Limitación conocida**: la unidad principal sigue siendo "día". Una actividad
+larga que cae justo en la transición entre una ventana favorable y una
+desfavorable puede ser difícil de planificar con esta vista. La opción C
+(rediseño a evaluación por franjas mañana/tarde como columnas separadas)
+queda en ADR-008.
+
+## ADR-008: Rediseño futuro a evaluación por franjas (horizonte) (2026-05-20)
+
+**Decisión**: tras 2-4 semanas de uso real con la versión B (ADR-007),
+re-evaluar si la herramienta debe rediseñarse a una unidad de evaluación
+por franjas (mañana/tarde como columnas separadas, o granularidad mayor).
+
+**Contexto**: el feedback externo y la naturaleza de las actividades de
+montaña sugieren que "un semáforo por día" puede ser excesivamente
+agregado. ADR-007 mitiga el problema con dato derivado en el modal,
+pero no cambia la unidad principal. Esta decisión queda pendiente de
+datos de uso real.
+
+**Criterios para tomar la decisión**:
+- Si en uso real las "mejores ventanas" del modal son consistentemente
+  diferentes del semáforo global, indica que la unidad "día" engaña y
+  procede rediseño.
+- Si las ventanas suelen coincidir con el semáforo global (días
+  meteorológicamente homogéneos), el rediseño no añade valor.
+
+**Datos a recopilar**: en docs/uso_real.md, anotar para cada salida:
+fecha, zona, actividad, semáforo global, mejor ventana, peor ventana,
+qué se encontró realmente.
