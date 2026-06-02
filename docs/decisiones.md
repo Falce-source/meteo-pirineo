@@ -180,3 +180,26 @@ datos de uso real.
 **Datos a recopilar**: en docs/uso_real.md, anotar para cada salida:
 fecha, zona, actividad, semáforo global, mejor ventana, peor ventana,
 qué se encontró realmente.
+
+## ADR-009: Algoritmo de ventanas — opción 3 con desempate por menor solape (2026-06-02)
+
+**Decisión**: el algoritmo de "mejor y peor ventana del día" muestra una
+sola ventana si todas las sub-ventanas tienen el mismo semáforo
+("homogéneo"); y muestra mejor + peor solo cuando existe diferenciación
+semafórica entre sub-ventanas. En caso de múltiples sub-ventanas con el
+mismo semáforo candidato a "mejor" o "peor", se aplica desempate por
+menor solape temporal con la otra ventana seleccionada.
+
+**Contexto**: la implementación inicial de Semana 5 (ADR-007) producía
+ventanas con solapamiento alto (p.ej. mejor 07-13 AMBAR y peor 09-15 ROJO
+con 4h en común sobre 6h totales). La información semafórica era correcta
+pero el solapamiento hacía el output visualmente confuso para el usuario.
+
+**Implementación**: enumerar todas las sub-ventanas, identificar candidatas
+de mejor y peor semáforo, elegir el par que minimiza el solape temporal.
+En empate, preferir el par más temprano en el día.
+
+**Limitación**: cuando solo existe una sub-ventana posible para "mejor" y
+otra para "peor", y ambas solapan forzosamente, se devuelven igualmente.
+El usuario ve dos rangos con solape pero distinguidos semafóricamente.
+Este caso es inevitable y aceptable.

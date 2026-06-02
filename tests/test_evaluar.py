@@ -533,7 +533,8 @@ def test_regla_tormenta_no_dispara_en_franja_matinal_estival(
 # ---------- Tests Semana 5: mejor/peor ventana del día (ADR-007) ----------
 
 def test_mejor_ventana_dia_homogeneo(actividades, zona_benasque):
-    """Día con condiciones constantes: mejor y peor coinciden."""
+    """Día con condiciones constantes: todas las sub-ventanas mismo
+    semáforo → es_homogenea=True, ventanas.homogenea poblada (ADR-009)."""
     fecha = date(2026, 6, 15)
     df = _hourly_df(
         fecha,
@@ -555,10 +556,11 @@ def test_mejor_ventana_dia_homogeneo(actividades, zona_benasque):
     ev = evaluar_dia(prev, skimo, fecha)
 
     assert ev.ventanas is not None
-    assert ev.ventanas.mejor is not None
-    assert ev.ventanas.peor is not None
-    # Ambas con el mismo semáforo (todo VERDE en este escenario).
-    assert ev.ventanas.mejor.semaforo == ev.ventanas.peor.semaforo == "VERDE"
+    assert ev.ventanas.es_homogenea is True
+    assert ev.ventanas.homogenea is not None
+    assert ev.ventanas.homogenea.semaforo == "VERDE"
+    assert ev.ventanas.mejor is None
+    assert ev.ventanas.peor is None
     assert ev.ventanas.duracion_h == 4  # skimo declara ventana_minima_h=4
 
 
@@ -687,7 +689,8 @@ def test_ventana_no_se_calcula_si_no_declarada(actividades, zona_benasque):
 
 
 def test_ventana_mayor_que_franja_caso_degenerado(actividades, zona_benasque):
-    """ventana_minima_h=12 sobre franja [7,17] (11 h): mejor == peor == franja."""
+    """ventana_minima_h=12 sobre franja [7,17] (11 h): única ventana
+    expuesta como homogenea (ADR-009)."""
     fecha = date(2026, 6, 15)
     df = _hourly_df(
         fecha,
@@ -711,16 +714,17 @@ def test_ventana_mayor_que_franja_caso_degenerado(actividades, zona_benasque):
     trail_largo["ventana_minima_h"] = 12
 
     v = calcular_ventanas_dia(prev, trail_largo, fecha)
-    assert v.mejor is not None and v.peor is not None
-    assert v.mejor.inicio == v.peor.inicio == 7
-    assert v.mejor.semaforo == v.peor.semaforo
+    assert v.es_homogenea is True
+    assert v.homogenea is not None
+    assert v.homogenea.inicio == 7
+    assert v.mejor is None
+    assert v.peor is None
     assert v.duracion_h == 12
 
 
 def test_ventana_empate_prefiere_temprana(actividades, zona_benasque):
-    """Día completamente homogéneo: hay varias ventanas con el mismo
-    semáforo; la mejor (y la peor) escogidas deben ser la más temprana
-    de cada categoría — en este caso la primera (07:xx)."""
+    """Día homogéneo: se expone una única ventana (la más temprana) y
+    no se duplica como mejor/peor (ADR-009)."""
     fecha = date(2026, 6, 15)
     df = _hourly_df(
         fecha,
@@ -742,10 +746,126 @@ def test_ventana_empate_prefiere_temprana(actividades, zona_benasque):
     ev = evaluar_dia(prev, skimo, fecha)
 
     # Empate total: skimo ventana_minima_h=4, franja [7,17] -> 7 ventanas
-    # posibles (start 7..13). Todas VERDE. Tanto mejor como peor escogen
-    # la más temprana: start=7.
+    # posibles (start 7..13), todas VERDE. La política de Semana 5+ las
+    # expone como homogenea sobre la más temprana (inicio=7).
     assert ev.ventanas is not None
-    assert ev.ventanas.mejor is not None
-    assert ev.ventanas.peor is not None
-    assert ev.ventanas.mejor.inicio == 7
-    assert ev.ventanas.peor.inicio == 7
+    assert ev.ventanas.es_homogenea is True
+    assert ev.ventanas.homogenea is not None
+    assert ev.ventanas.homogenea.inicio == 7
+
+
+# ---------- Tests ADR-009: desempate por menor solape ----------
+
+def test_ventana_desempate_por_menor_solape(actividades, zona_benasque):
+    """Múltiples sub-ventanas AMBAR y varias ROJO: el par seleccionado
+    debe minimizar el solape temporal, no escoger la más temprana sin más.
+
+    Setup: alpinismo_invierno (ventana=6h, franja [7,17]) →
+    starts 7..12 = 6 sub-ventanas. Baseline AMBAR por cloudcover=75 (>70).
+    Spike ROJO por windgusts=65 (>60 alpinismo_invierno) a las 14:00 →
+    afecta a windows cuyo rango inclusive contiene la hora 14.
+
+    Pares candidatos (mejor 7-13, 8-14 AMBAR vs peor 9-15, 10-16, 11-17,
+    12-18 ROJO) y sus solapes; min solape = 1h, par (7-13, 12-18).
+    """
+    fecha = date(2026, 1, 15)
+    rafagas = [20.0] * 24
+    rafagas[14] = 65.0  # única hora con ROJO trigger
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [0.0] * 24,
+            "windspeed_10m": [20.0] * 24,
+            "windgusts_10m": rafagas,
+            "cloudcover": [75.0] * 24,  # AMBAR base (>70 alpinismo_invierno)
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [50.0] * 24,
+            "cape": [100.0] * 24,
+            "weathercode": [1] * 24,
+            "freezing_level_height": [float("nan")] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    alp_inv = _actividad(actividades, "alpinismo_invierno")
+    v = calcular_ventanas_dia(prev, alp_inv, fecha)
+
+    assert v.es_homogenea is False
+    assert v.mejor is not None and v.peor is not None
+    assert v.mejor.semaforo == "AMBAR"
+    assert v.peor.semaforo == "ROJO"
+    # El par con menor solape es (7-13, 12-18) = 1h.
+    assert v.mejor.inicio == 7
+    assert v.mejor.fin == 13
+    assert v.peor.inicio == 12
+    assert v.peor.fin == 18
+
+    def solape(a, b):
+        return max(0, min(a.fin, b.fin) - max(a.inicio, b.inicio))
+
+    assert solape(v.mejor, v.peor) == 1
+
+
+def test_ventana_solape_total_se_acepta_si_es_lo_unico(zona_benasque):
+    """Cuando solo hay una sub-ventana en cada categoría y se solapan
+    forzosamente, el algoritmo las devuelve igualmente — no None.
+
+    Actividad ad-hoc: franja [10, 16] (7h), ventana=6h → 2 sub-ventanas.
+    [10,15] (inclusive) → fin exclusivo 16; [11,16] → fin exclusivo 17.
+    Solape forzado = 5h.
+
+    AMBAR por rafagas[10]=50; VERDE por nada; ROJO por rafagas[16]=80.
+    Como solo hay 2 ventanas y ambas comparten 11..15, la 1ª es AMBAR
+    (sin spike rojo) y la 2ª es ROJO (incluye hora 16). El par es único.
+    """
+    fecha = date(2026, 6, 15)
+    actividad_custom = {
+        "id": "test_largo",
+        "nombre": "Test ad-hoc",
+        "franja_horaria": [10, 16],
+        "ventana_minima_h": 6,
+        "requiere_aviso_aludes": False,
+        "reglas": [
+            {
+                "variable": "windgusts_10m",
+                "agg": "max",
+                "op": ">",
+                "rojo": 60,
+                "ambar": 30,
+                "unidad": "km/h",
+                "descripcion": "Ráfagas",
+            },
+        ],
+    }
+    rafagas = [0.0] * 24
+    rafagas[10] = 50.0   # AMBAR para [10,15], NO incluido en [11,16]
+    rafagas[16] = 80.0   # ROJO para [11,16], NO incluido en [10,15]
+    df = _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [15.0] * 24,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": rafagas,
+            "cloudcover": [30.0] * 24,
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [50.0] * 24,
+            "cape": [100.0] * 24,
+            "weathercode": [1] * 24,
+        },
+    )
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    v = calcular_ventanas_dia(prev, actividad_custom, fecha)
+
+    assert v.es_homogenea is False
+    assert v.mejor is not None
+    assert v.peor is not None
+    assert v.mejor.semaforo == "AMBAR"
+    assert v.peor.semaforo == "ROJO"
+    # Solape forzoso de 5h, aceptado.
+    solape = max(
+        0, min(v.mejor.fin, v.peor.fin) - max(v.mejor.inicio, v.peor.inicio)
+    )
+    assert solape == 5

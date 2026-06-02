@@ -90,11 +90,27 @@ class Ventana:
 
 @dataclass
 class VentanasDia:
-    """Resumen de la mejor y peor sub-ventana del día (ADR-007)."""
+    """Resumen de mejor/peor sub-ventana del día.
 
+    Política de exposición (ADR-007, refinada por ADR-009):
+
+    - Si ``homogenea`` está poblada → todas las sub-ventanas tienen el
+      mismo semáforo y el render muestra una sola línea "Todo el día
+      homogéneo".
+    - Si ``mejor`` y ``peor`` están poblados → existe diferenciación
+      semafórica y el render muestra ambas. El par concreto se elige
+      minimizando el solape temporal entre ambas (ADR-009).
+    - Si todos son ``None`` → la actividad no declaró ``ventana_minima_h``.
+    """
+
+    homogenea: Ventana | None = None
     mejor: Ventana | None = None
     peor: Ventana | None = None
     duracion_h: int = 0
+
+    @property
+    def es_homogenea(self) -> bool:
+        return self.homogenea is not None
 
 
 @dataclass
@@ -380,11 +396,17 @@ def _construir_avisos(
     return avisos
 
 
-# Orden de "calidad" para escoger mejor/peor ventana. Lower es mejor.
+# Ranking de "calidad" para identificar la sub-ventana MEJOR. Lower wins.
 _RANK_MEJOR: dict[str, int] = {"VERDE": 0, "AMBAR": 1, "ROJO": 2, "SIN_DATOS": 3}
-# Orden de "gravedad" para escoger peor. Higher es peor; en
-# ``calcular_ventanas_dia`` usamos -gravedad para tomar el min.
-_RANK_GRAVEDAD: dict[str, int] = {"SIN_DATOS": 0, "VERDE": 1, "AMBAR": 2, "ROJO": 3}
+# Ranking de "gravedad" para identificar la sub-ventana PEOR. Lower wins
+# (ROJO es la peor). SIN_DATOS se trata como "sin información actionable"
+# y queda al final, para no robar el puesto a un ROJO real.
+_RANK_PEOR: dict[str, int] = {"ROJO": 0, "AMBAR": 1, "VERDE": 2, "SIN_DATOS": 3}
+
+
+def _solape(a: Ventana, b: Ventana) -> int:
+    """Horas de solape entre dos sub-ventanas (fin exclusivo)."""
+    return max(0, min(a.fin, b.fin) - max(a.inicio, b.inicio))
 
 
 def calcular_ventanas_dia(
@@ -392,21 +414,29 @@ def calcular_ventanas_dia(
     actividad: dict[str, Any],
     fecha: date,
 ) -> VentanasDia:
-    """Calcula mejor y peor sub-ventana del día.
+    """Calcula la información de sub-ventanas del día (ADR-007 + ADR-009).
 
-    Ventana deslizante de paso 1 h sobre la franja horaria de la
-    actividad. Cada posición se evalúa con las mismas reglas que el
-    día completo.
+    Ventana deslizante de paso 1 h sobre la franja_horaria de la actividad.
+    Cada posición se evalúa con las mismas reglas que el día completo.
 
-    - Empate en mejor o peor: se prefiere la sub-ventana más temprana.
-    - Si la actividad no declara ``ventana_minima_h``: devuelve
-      ``VentanasDia(mejor=None, peor=None, duracion_h=0)``.
-    - Si la duración pedida es >= franja_horaria: la franja completa
-      es la única ventana (``mejor == peor``).
+    Política (ADR-009):
+
+    1. Si la actividad no declara ``ventana_minima_h``: devuelve un
+       VentanasDia vacío (todo None).
+    2. Si la duración pedida es ≥ franja_horaria: una única ventana
+       cubriendo la franja completa, expuesta como ``homogenea``.
+    3. Si todas las sub-ventanas comparten el mismo semáforo: ``homogenea``
+       poblada con la más temprana.
+    4. En otro caso: ``mejor`` y ``peor`` poblados, eligiendo el par que
+       minimiza el solape temporal. Desempates: (a) menor solape;
+       (b) mejor más temprano; (c) peor más temprano.
+
+    Las sub-ventanas SIN_DATOS no compiten por "mejor" ni "peor" cuando
+    coexisten con semáforos válidos (se las excluye del ranking).
     """
     duracion_h = actividad.get("ventana_minima_h")
     if duracion_h is None:
-        return VentanasDia(mejor=None, peor=None, duracion_h=0)
+        return VentanasDia(duracion_h=0)
     duracion_h = int(duracion_h)
 
     franja_act = actividad.get("franja_horaria", list(FRANJA_DEFAULT))
@@ -415,20 +445,22 @@ def calcular_ventanas_dia(
 
     df = prevision.horario
 
-    # Caso degenerado: ventana >= franja → una única ventana.
+    # Caso degenerado: ventana >= franja → única ventana, expuesta como
+    # homogénea.
     if duracion_h >= franja_size:
         sem, motivos, dc = _evaluar_reglas_franja(
             df, actividad, fecha, (franja_inicio, franja_fin)
         )
-        ventana = Ventana(
+        unica = Ventana(
             inicio=franja_inicio,
             fin=franja_inicio + duracion_h,  # exclusiva
             semaforo=sem,
             motivos=motivos,
             datos_clave=dc,
         )
-        return VentanasDia(mejor=ventana, peor=ventana, duracion_h=duracion_h)
+        return VentanasDia(homogenea=unica, duracion_h=duracion_h)
 
+    # Enumerar todas las sub-ventanas.
     ventanas: list[Ventana] = []
     last_start = franja_fin - duracion_h + 1
     for inicio in range(franja_inicio, last_start + 1):
@@ -446,13 +478,46 @@ def calcular_ventanas_dia(
             )
         )
 
-    mejor = min(
-        ventanas, key=lambda v: (_RANK_MEJOR[v.semaforo], v.inicio)
+    # Caso homogéneo estricto: todas las sub-ventanas mismo semáforo.
+    semaforos_presentes = {v.semaforo for v in ventanas}
+    if len(semaforos_presentes) == 1:
+        return VentanasDia(homogenea=ventanas[0], duracion_h=duracion_h)
+
+    # Para escoger mejor/peor, ignoramos SIN_DATOS si coexisten con
+    # semáforos válidos (es información, no severidad).
+    semaforos_validos = {s for s in semaforos_presentes if s != "SIN_DATOS"}
+    if not semaforos_validos:
+        # Solo SIN_DATOS (no debería pasar dado el filtro anterior, pero
+        # por seguridad).
+        return VentanasDia(homogenea=ventanas[0], duracion_h=duracion_h)
+
+    sem_mejor = min(semaforos_validos, key=lambda s: _RANK_MEJOR[s])
+    sem_peor = min(semaforos_validos, key=lambda s: _RANK_PEOR[s])
+
+    # Si sólo hay un semáforo válido (p. ej. VERDE coexistiendo con
+    # SIN_DATOS), no hay diferenciación: homogénea sobre el válido.
+    if sem_mejor == sem_peor:
+        candidata = next(v for v in ventanas if v.semaforo == sem_mejor)
+        return VentanasDia(homogenea=candidata, duracion_h=duracion_h)
+
+    candidatas_mejor = [v for v in ventanas if v.semaforo == sem_mejor]
+    candidatas_peor = [v for v in ventanas if v.semaforo == sem_peor]
+
+    # Construir pares y elegir el de mínimo solape. Desempate temprano.
+    mejor, peor = min(
+        (
+            (m, p)
+            for m in candidatas_mejor
+            for p in candidatas_peor
+        ),
+        key=lambda mp: (_solape(mp[0], mp[1]), mp[0].inicio, mp[1].inicio),
     )
-    peor = min(
-        ventanas, key=lambda v: (-_RANK_GRAVEDAD[v.semaforo], v.inicio)
+
+    return VentanasDia(
+        mejor=mejor,
+        peor=peor,
+        duracion_h=duracion_h,
     )
-    return VentanasDia(mejor=mejor, peor=peor, duracion_h=duracion_h)
 
 
 def evaluar_dia(

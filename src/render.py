@@ -319,28 +319,25 @@ JS_INLINE = """\
       html += '</dl>';
     }
 
-    // Ventanas óptimas (ADR-007). Solo si la actividad declara ventana_minima_h.
+    // Ventanas óptimas (ADR-007 / ADR-009). Solo si la actividad
+    // declara ventana_minima_h y hay datos serializados.
     const ventanas = JSON.parse(btn.dataset.ventanas || 'null');
-    if (ventanas && ventanas.mejor && ventanas.peor) {
-      const mejor = ventanas.mejor;
-      const peor = ventanas.peor;
-      const homogeneo = (
-        mejor.inicio === peor.inicio
-        && mejor.fin === peor.fin
-        && mejor.semaforo === peor.semaforo
-      );
+    if (ventanas && (ventanas.homogenea || (ventanas.mejor && ventanas.peor))) {
+      const esHomogenea = !!ventanas.homogenea;
       const esOportunidad = (
-        !homogeneo
-        && mejor.semaforo === 'VERDE'
+        !esHomogenea
+        && ventanas.mejor.semaforo === 'VERDE'
         && (semaforo === 'AMBAR' || semaforo === 'ROJO')
       );
       const cls = esOportunidad ? 'ventanas oportunidad' : 'ventanas';
       let vh = '<section class="' + cls + '">';
       vh += '<h4>Ventanas óptimas (ventana mínima: ' + escapeHTML(String(ventanas.duracion_h)) + ' h)</h4>';
       vh += '<ul>';
-      if (homogeneo) {
-        vh += '<li><strong>Todo el día homogéneo:</strong> ' + glifoInline(mejor.semaforo) + '</li>';
+      if (esHomogenea) {
+        vh += '<li><strong>Todo el día homogéneo:</strong> ' + glifoInline(ventanas.homogenea.semaforo) + '</li>';
       } else {
+        const mejor = ventanas.mejor;
+        const peor = ventanas.peor;
         vh += '<li><strong>Mejor ventana:</strong> '
           + escapeHTML(fmtHora(mejor.inicio)) + '–' + escapeHTML(fmtHora(mejor.fin))
           + ' ' + glifoInline(mejor.semaforo) + '</li>';
@@ -396,23 +393,28 @@ def _e(text: Any) -> str:
     return html.escape(str(text), quote=True)
 
 
+def _ventana_dict(v) -> dict[str, Any]:
+    return {"inicio": v.inicio, "fin": v.fin, "semaforo": v.semaforo}
+
+
 def _serializar_ventanas(v: VentanasDia | None) -> dict[str, Any] | None:
-    """Serializa VentanasDia a dict listo para JSON (solo campos display)."""
-    if v is None or v.mejor is None or v.peor is None:
+    """Serializa VentanasDia a dict listo para JSON (solo campos display).
+
+    Devuelve ``None`` si la actividad no declara ventana o no hay datos
+    de ventana que mostrar.
+    """
+    if v is None:
         return None
-    return {
-        "duracion_h": v.duracion_h,
-        "mejor": {
-            "inicio": v.mejor.inicio,
-            "fin": v.mejor.fin,
-            "semaforo": v.mejor.semaforo,
-        },
-        "peor": {
-            "inicio": v.peor.inicio,
-            "fin": v.peor.fin,
-            "semaforo": v.peor.semaforo,
-        },
-    }
+    if v.homogenea is None and v.mejor is None and v.peor is None:
+        return None
+    out: dict[str, Any] = {"duracion_h": v.duracion_h}
+    if v.homogenea is not None:
+        out["homogenea"] = _ventana_dict(v.homogenea)
+    if v.mejor is not None:
+        out["mejor"] = _ventana_dict(v.mejor)
+    if v.peor is not None:
+        out["peor"] = _ventana_dict(v.peor)
+    return out
 
 
 # ----------------------------------------------------------------------

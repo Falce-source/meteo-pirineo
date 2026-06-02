@@ -262,11 +262,10 @@ def paquetes_con_ventanas() -> dict:
     zona = ZONAS_FAKE[0]
     fecha = FECHAS_FAKE[0]
 
-    # 1) Celda HOMOGÉNEA: skimo, todas las ventanas VERDE.
+    # 1) Celda HOMOGÉNEA (ADR-009): skimo, una sola ventana en `homogenea`.
     ev_homogenea = _eval(zona["id"], "skimo", fecha, "VERDE")
     ev_homogenea.ventanas = VentanasDia(
-        mejor=Ventana(inicio=7, fin=11, semaforo="VERDE"),
-        peor=Ventana(inicio=7, fin=11, semaforo="VERDE"),
+        homogenea=Ventana(inicio=7, fin=11, semaforo="VERDE"),
         duracion_h=4,
     )
 
@@ -313,17 +312,18 @@ def paquetes_con_ventanas() -> dict:
 
 
 def test_html_modal_muestra_ventanas(tmp_path, paquetes_con_ventanas):
-    """Una celda con ventanas serializa los datos en data-ventanas y el
-    JS contiene la plantilla "Mejor ventana ... HH:MM"."""
+    """Una celda heterogénea (ADR-009) serializa mejor + peor en
+    data-ventanas, sin campo homogenea; el JS contiene la plantilla."""
     contenido, _ = _render_to(tmp_path, paquetes_con_ventanas)
     soup = BeautifulSoup(contenido, "html.parser")
 
-    # data-ventanas en la celda de oportunidad.
+    # data-ventanas en la celda de oportunidad (heterogénea).
     celda = soup.find(id="benasque-alpinismo_invierno-2026-05-19")
     raw = celda.get("data-ventanas")
     assert raw and raw != "null"
     ventanas = json.loads(raw)
     assert ventanas["duracion_h"] == 6
+    assert "homogenea" not in ventanas  # caso heterogéneo
     assert ventanas["mejor"]["inicio"] == 7
     assert ventanas["mejor"]["fin"] == 13
     assert ventanas["mejor"]["semaforo"] == "VERDE"
@@ -348,23 +348,25 @@ def test_html_modal_omite_ventanas_si_actividad_no_las_declara(
     raw = celda.get("data-ventanas")
     assert raw == "null", f"esperaba null, salió {raw!r}"
 
-    # El JS comprueba `if (ventanas && ventanas.mejor && ventanas.peor)`.
-    assert "ventanas && ventanas.mejor" in contenido
+    # Condición JS: la sección se omite si no hay homogenea ni mejor+peor.
+    assert "ventanas.homogenea || (ventanas.mejor && ventanas.peor)" in contenido
 
 
 def test_html_modal_dia_homogeneo(tmp_path, paquetes_con_ventanas):
-    """Cuando mejor==peor (mismo inicio/fin/semáforo), el JS muestra
-    'Todo el día homogéneo' en lugar de las dos líneas."""
+    """ADR-009: el caso homogéneo se serializa con campo `homogenea`
+    poblado; el JS muestra 'Todo el día homogéneo'."""
     contenido, _ = _render_to(tmp_path, paquetes_con_ventanas)
     soup = BeautifulSoup(contenido, "html.parser")
 
     celda = soup.find(id="benasque-skimo-2026-05-19")
     raw = celda.get("data-ventanas")
     ventanas = json.loads(raw)
-    # mejor y peor deben coincidir en este caso homogéneo.
-    assert ventanas["mejor"]["inicio"] == ventanas["peor"]["inicio"]
-    assert ventanas["mejor"]["fin"] == ventanas["peor"]["fin"]
-    assert ventanas["mejor"]["semaforo"] == ventanas["peor"]["semaforo"]
+
+    # Caso homogéneo: solo `homogenea`, sin mejor/peor.
+    assert "homogenea" in ventanas
+    assert ventanas["homogenea"]["semaforo"] == "VERDE"
+    assert "mejor" not in ventanas
+    assert "peor" not in ventanas
 
     # Plantilla JS contiene el texto "Todo el día homogéneo".
     assert "Todo el día homogéneo" in contenido
