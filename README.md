@@ -151,6 +151,7 @@ Limitaciones adicionales registradas:
 - **Horizonte temporal ARPEGE ≈ 111 h.** Suficiente para los 5 días previstos. Si Open-Meteo recortara puntualmente, los días sin datos aparecerían como ⚪.
 - **Resolución ARPEGE 25 km.** Subestimación posible del viento en cresta vs un modelo de 1.3 km como AROME. Decisión consciente (ver ADR-005): la cobertura temporal y de variables prima sobre la resolución espacial para v0.1.
 - **Variables derivadas pendientes**: `snowfall_48h_previas` e `indice_tormenta` se declaran en `config/actividades.yaml` pero no se calculan hasta Semana 4. Las reglas que las usan emiten un aviso "Regla pendiente …".
+- **Activación por temporada.** Cada actividad se evalúa solo en los meses configurados en `config/actividades.yaml` (campo `meses_activos`). Fuera de esos meses, la actividad no aparece en la tabla para ese día. Por ejemplo, alpinismo invernal/primaveral no se evalúa de julio a octubre. Esto es deliberado para evitar evaluaciones sin sentido operativo, no un bug.
 
 ## Aviso de aludes
 

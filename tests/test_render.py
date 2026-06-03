@@ -370,3 +370,108 @@ def test_html_modal_dia_homogeneo(tmp_path, paquetes_con_ventanas):
 
     # Plantilla JS contiene el texto "Todo el día homogéneo".
     assert "Todo el día homogéneo" in contenido
+
+
+# ---------- Tests ADR-010: activación por temporada en render ----------
+
+def _render_to_with_horizon(
+    tmp_path: Path, paquetes: dict, fechas_horizonte: list[date]
+) -> tuple[str, Path]:
+    """Variante de _render_to que inyecta fechas_horizonte por zona."""
+    out = tmp_path / "index.html"
+    # Cada paquete recibe explícitamente las fechas del horizonte.
+    paquetes_con_horizon = {
+        zid: {**p, "fechas_horizonte": list(fechas_horizonte)}
+        for zid, p in paquetes.items()
+    }
+    path = renderizar_html(
+        evaluaciones_por_zona=paquetes_con_horizon,
+        timestamp=datetime(2026, 6, 30, 12, 0),
+        modelo="meteofrance_arpege_europe",
+        actividades=ACTIVIDADES_FAKE,
+        output_path=out,
+    )
+    return path.read_text(encoding="utf-8"), path
+
+
+def test_fila_actividad_omitida_si_ningun_dia_activo(tmp_path):
+    """Si en TODO el horizonte la actividad no tiene evaluación,
+    su fila NO aparece en el HTML (ADR-010)."""
+    zona = ZONAS_FAKE[0]
+    # Horizonte de 3 días en julio: skimo no tiene ninguna evaluación.
+    fechas_horizonte = [date(2026, 7, i) for i in (1, 2, 3)]
+    # Solo evaluaciones de alpinismo_estival (activo en julio).
+    evs = [
+        _eval(zona["id"], "alpinismo_estival", f, "VERDE")
+        for f in fechas_horizonte
+    ]
+    paquetes = {zona["id"]: {"zona": zona, "evaluaciones": evs}}
+
+    contenido, _ = _render_to_with_horizon(tmp_path, paquetes, fechas_horizonte)
+    soup = BeautifulSoup(contenido, "html.parser")
+
+    # Filas presentes (th scope=row).
+    nombres_fila = [th.get_text() for th in soup.find_all("th", attrs={"scope": "row"})]
+    assert "Esquí de montaña" not in nombres_fila
+    assert "Alpinismo invernal" not in nombres_fila
+    assert "Trail running" not in nombres_fila
+    assert "Ciclismo" not in nombres_fila
+    # La única fila visible es alpinismo_estival.
+    assert "Alpinismo estival" in nombres_fila
+
+
+def test_celda_fuera_temporada_se_muestra_si_otros_dias_activos(tmp_path):
+    """Horizonte cruza el cambio de mes: la actividad está activa unos
+    días y no otros. Los días no activos aparecen como celdas
+    fuera-temporada (gris)."""
+    zona = ZONAS_FAKE[0]
+    # Horizonte 30-jun a 4-jul (cruza el corte mensual).
+    fechas_horizonte = [date(2026, 6, 30)] + [date(2026, 7, d) for d in (1, 2, 3, 4)]
+    # alpinismo_invierno activo solo el 30-jun (junio en su lista 11-6).
+    evs = [_eval(zona["id"], "alpinismo_invierno", date(2026, 6, 30), "VERDE")]
+    # alpinismo_estival activo todos los días (junio y julio en 6-10).
+    evs.extend(
+        _eval(zona["id"], "alpinismo_estival", f, "VERDE")
+        for f in fechas_horizonte
+    )
+    paquetes = {zona["id"]: {"zona": zona, "evaluaciones": evs}}
+
+    contenido, _ = _render_to_with_horizon(tmp_path, paquetes, fechas_horizonte)
+    soup = BeautifulSoup(contenido, "html.parser")
+
+    # 4 celdas fuera-temporada (alpinismo_invierno en julio: 1, 2, 3, 4).
+    celdas_ft = soup.find_all(class_="fuera-temporada")
+    assert len(celdas_ft) == 4
+
+    # 30-jun: celda normal (button) para alpinismo_invierno.
+    celda_30jun = soup.find(id="benasque-alpinismo_invierno-2026-06-30")
+    assert celda_30jun is not None
+    assert celda_30jun.name == "button"
+    assert "verde" in celda_30jun.get("class", [])
+
+
+def test_celda_fuera_temporada_no_es_clickable(tmp_path):
+    """Las celdas fuera-temporada NO son <button>, NO llevan atributos
+    data-* y por tanto el JS de modal no las abre."""
+    zona = ZONAS_FAKE[0]
+    fechas_horizonte = [date(2026, 6, 30)] + [date(2026, 7, d) for d in (1, 2, 3, 4)]
+    evs = [_eval(zona["id"], "alpinismo_invierno", date(2026, 6, 30), "VERDE")]
+    evs.extend(
+        _eval(zona["id"], "alpinismo_estival", f, "VERDE")
+        for f in fechas_horizonte
+    )
+    paquetes = {zona["id"]: {"zona": zona, "evaluaciones": evs}}
+
+    contenido, _ = _render_to_with_horizon(tmp_path, paquetes, fechas_horizonte)
+    soup = BeautifulSoup(contenido, "html.parser")
+
+    for ft in soup.find_all(class_="fuera-temporada"):
+        # No es un <button>.
+        assert ft.name != "button"
+        # No tiene NINGÚN atributo data-*.
+        for attr in ft.attrs:
+            assert not attr.startswith("data-"), (
+                f"celda fuera-temporada con atributo data-* prohibido: {attr}"
+            )
+        # Lleva el tooltip 'Fuera de temporada'.
+        assert ft.get("title") == "Fuera de temporada"

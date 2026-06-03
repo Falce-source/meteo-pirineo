@@ -118,8 +118,22 @@ def imprimir_tabla_zona(
     evaluaciones: list[EvaluacionDia],
     fecha_fetch: datetime,
     modelo: str,
+    fechas_horizonte: list[date] | None = None,
 ) -> None:
-    fechas = fechas_disponibles(evaluaciones)
+    """Imprime la tabla de semáforos por consola.
+
+    ``fechas_horizonte`` debe contener TODAS las fechas del horizonte,
+    no solo aquellas con evaluación: una columna por día se reserva
+    aunque algunas actividades estén fuera de temporada ese día (las
+    celdas correspondientes muestran "—"). Si no se pasa, se deriva
+    de las evaluaciones (compat) y por tanto solo se ven fechas con
+    al menos una actividad activa.
+    """
+    fechas = (
+        list(fechas_horizonte)
+        if fechas_horizonte is not None
+        else fechas_disponibles(evaluaciones)
+    )
     titulo = (
         f"ZONA: {zona['nombre']} — "
         f"{zona['latitud']}°N, {zona['longitud']}°E, "
@@ -147,21 +161,31 @@ def imprimir_tabla_zona(
     por_clave: dict[tuple[str, object], EvaluacionDia] = {
         (ev.actividad_id, ev.fecha): ev for ev in evaluaciones
     }
+    actividades_con_eval: set[str] = {ev.actividad_id for ev in evaluaciones}
+
+    # Actividades que no aparecen en NINGÚN día del horizonte
+    # (fila completa omitida) — ADR-010.
+    actividades_fuera_total: list[str] = []
 
     for act in actividades:
+        if act["id"] not in actividades_con_eval:
+            actividades_fuera_total.append(act["nombre"])
+            continue
         fila = f"{act['nombre'][:ANCHO_COL_ACT]:<{ANCHO_COL_ACT}}"
         for f in fechas:
             ev = por_clave.get((act["id"], f))
             if ev is None:
-                fila += " " * ANCHO_COL_FECHA
+                # Fuera de temporada ese día concreto (la actividad sí
+                # se evalúa otros días del horizonte).
+                fila += "—" + " " * (ANCHO_COL_FECHA - 1)
             else:
-                # Glifo + padding. Emoji ocupa ~2 celdas visuales, pero
-                # 1 carácter en string. Compensamos con ANCHO_COL_FECHA-2
-                # espacios para que la siguiente columna quede alineada
-                # en terminales que renderizan el emoji ancho.
                 glifo = GLIFOS_SEMAFORO.get(ev.semaforo, "?")
                 fila += glifo + " " * (ANCHO_COL_FECHA - 2)
         print(fila)
+
+    if actividades_fuera_total:
+        print()
+        print(f"Fuera de temporada: {', '.join(actividades_fuera_total)}")
 
     # Avisos de zona (deduplicados).
     avisos_zona = {
@@ -229,11 +253,17 @@ def evaluar_zona(
     prevision: PrevisionMeteo,
     actividades: list[dict],
 ) -> list[EvaluacionDia]:
+    """Devuelve solo las evaluaciones de combinaciones (actividad, día)
+    que están en temporada (ADR-010). Las combinaciones fuera de
+    temporada quedan simplemente fuera de la lista.
+    """
     fechas: list = sorted({ts.date() for ts in prevision.horario.index})
     salida: list[EvaluacionDia] = []
     for fecha in fechas:
         for act in actividades:
-            salida.append(evaluar_dia(prevision, act, fecha))
+            res = evaluar_dia(prevision, act, fecha)
+            if res is not None:
+                salida.append(res)
     return salida
 
 
@@ -243,10 +273,17 @@ def _build_evaluaciones_sin_datos(
     fechas: list[date],
     aviso: str,
 ) -> list[EvaluacionDia]:
-    """Genera evaluaciones placeholder ``SIN_DATOS`` para una zona fallida."""
+    """Genera evaluaciones placeholder ``SIN_DATOS`` para una zona fallida.
+
+    Respeta ``meses_activos``: si una actividad no está activa en un
+    mes concreto, no se genera placeholder para esa combinación.
+    """
     out: list[EvaluacionDia] = []
     for fecha in fechas:
         for act in actividades:
+            meses_activos = act.get("meses_activos")
+            if meses_activos is not None and fecha.month not in meses_activos:
+                continue
             out.append(
                 EvaluacionDia(
                     zona_id=zona["id"],
@@ -335,21 +372,26 @@ def main(
                 prevision.horario, zona["elevacion_m"]
             )
             evaluaciones = evaluar_zona(prevision, actividades)
+            fechas_horizonte = sorted(
+                {ts.date() for ts in prevision.horario.index}
+            )
             paquetes_por_zona[zona["id"]] = {
                 "zona": zona,
                 "evaluaciones": evaluaciones,
+                "fechas_horizonte": fechas_horizonte,
                 "fecha_fetch": prevision.timestamp_fetch,
             }
             if timestamp_global is None or prevision.timestamp_fetch > timestamp_global:
                 timestamp_global = prevision.timestamp_fetch
             if fechas_referencia is None:
-                fechas_referencia = sorted({e.fecha for e in evaluaciones})
+                fechas_referencia = fechas_horizonte
         except (requests.RequestException, ValueError) as e:
             logger.error("Fetch falló para zona=%s: %s", zona["id"], e)
             zonas_fallidas.add(zona["id"])
             paquetes_por_zona[zona["id"]] = {
                 "zona": zona,
                 "evaluaciones": None,  # se rellena tras el bucle
+                "fechas_horizonte": None,
                 "fecha_fetch": None,
             }
 
@@ -368,6 +410,7 @@ def main(
             paquete["evaluaciones"] = _build_evaluaciones_sin_datos(
                 paquete["zona"], actividades, fechas_referencia, aviso_error
             )
+            paquete["fechas_horizonte"] = list(fechas_referencia)
             paquete["fecha_fetch"] = ts_relleno
 
     if timestamp_global is None:
@@ -391,12 +434,17 @@ def main(
                 evaluaciones=paquete["evaluaciones"],
                 fecha_fetch=paquete["fecha_fetch"],
                 modelo=modelo,
+                fechas_horizonte=paquete.get("fechas_horizonte"),
             )
         print()
 
     if html_activo and paquetes_por_zona:
         slim = {
-            zid: {"zona": p["zona"], "evaluaciones": p["evaluaciones"]}
+            zid: {
+                "zona": p["zona"],
+                "evaluaciones": p["evaluaciones"],
+                "fechas_horizonte": p.get("fechas_horizonte"),
+            }
             for zid, p in paquetes_por_zona.items()
         }
         output_path = Path(output_dir) / "index.html"

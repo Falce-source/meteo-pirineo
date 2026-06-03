@@ -524,8 +524,21 @@ def evaluar_dia(
     prevision: PrevisionMeteo,
     actividad: dict[str, Any],
     fecha: date,
-) -> EvaluacionDia:
-    """Evalúa una actividad concreta en una zona/fecha dadas."""
+) -> EvaluacionDia | None:
+    """Evalúa una actividad concreta en una zona/fecha dadas.
+
+    Devuelve ``None`` si la actividad no está activa en el mes de la
+    fecha indicada (ver ``meses_activos`` en config/actividades.yaml,
+    ADR-010). El consumidor (``main.py``, ``render.py``) debe omitir
+    esa combinación zona/actividad/día.
+
+    Si la actividad no declara ``meses_activos`` (compatibilidad), se
+    considera activa todo el año.
+    """
+    meses_activos = actividad.get("meses_activos")
+    if meses_activos is not None and fecha.month not in meses_activos:
+        return None
+
     zona = prevision.zona
     df = prevision.horario
     franja_act = tuple(

@@ -71,10 +71,13 @@ def test_main_continua_si_una_zona_falla(tmp_path):
     soup = BeautifulSoup(contenido, "html.parser")
 
     # Aran: todas las celdas en SIN_DATOS, con aviso de error.
+    # Solo aparecen actividades activas en mayo (ADR-010):
+    # skimo, alpinismo_invierno, trail, ciclismo. alpinismo_estival
+    # está fuera de temporada en mayo y no genera celda.
     aran_section = soup.find("section", id="zona-aran")
     assert aran_section is not None
     aran_cells = aran_section.find_all("button", class_="celda")
-    assert len(aran_cells) == 25  # 5 actividades × 5 días
+    assert len(aran_cells) == 20  # 4 actividades activas × 5 días
     for cell in aran_cells:
         assert "sin-datos" in cell.get("class", []), (
             f"celda aran no es SIN_DATOS: {cell.get('class')}"

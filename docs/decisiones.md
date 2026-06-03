@@ -203,3 +203,33 @@ En empate, preferir el par más temprano en el día.
 otra para "peor", y ambas solapan forzosamente, se devuelven igualmente.
 El usuario ve dos rangos con solape pero distinguidos semafóricamente.
 Este caso es inevitable y aceptable.
+
+## ADR-010: Activación de actividades por mes calendario (2026-06-02)
+
+**Decisión**: cada actividad declara una lista `meses_activos: [int]` en
+config/actividades.yaml. La evaluación devuelve None para combinaciones
+(actividad, día) en meses no activos. El render omite la fila completa
+si la actividad no está activa en ningún día del horizonte, y muestra
+celda placeholder gris si está activa en algunos días pero no en otros.
+
+**Contexto**: previo a este ADR, skimo se evaluaba en agosto y alpinismo
+invernal en julio, produciendo semáforos sin sentido operativo. Es un
+fallo visible para cualquier usuario externo que abriera la app fuera
+de temporada típica de cada deporte.
+
+**Tabla de meses activos en v0.1**:
+- skimo: nov-may
+- alpinismo invernal/primaveral: nov-jun
+- alpinismo estival: jun-oct
+- trail: mar-nov
+- ciclismo: mar-nov
+
+**Granularidad**: por mes calendario completo. Decisión consciente
+para mantener simplicidad. Si en uso real se observa que los bordes
+de transición (ej. principio o final de junio para skimo) generan
+ruido, evaluar en futuro paso a rangos de fechas configurables.
+
+**Limitación conocida**: trail y ciclismo en pleno invierno no se
+evalúan aunque hay practicantes que sí lo hacen. Decisión deliberada
+de Andrés. Si en uso real falta, mover umbrales en YAML (no requiere
+cambio de código).

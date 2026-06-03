@@ -103,6 +103,9 @@ def test_semaforo_verde_dia_tranquilo(actividades, zona_benasque):
 
     for act in actividades:
         ev = evaluar_dia(prev, act, fecha)
+        if ev is None:
+            # Actividad fuera de temporada en esta fecha (ADR-010).
+            continue
         assert ev.semaforo == "VERDE", (
             f"{act['id']}: esperaba VERDE, salió {ev.semaforo}. "
             f"motivos={ev.motivos}"
@@ -113,7 +116,9 @@ def test_semaforo_verde_dia_tranquilo(actividades, zona_benasque):
 
 def test_semaforo_rojo_viento_extremo(actividades, zona_benasque):
     """Viento 60 km/h sostenido dispara ROJO en skimo, alpinismo_invierno, ciclismo."""
-    fecha = date(2026, 1, 15)
+    # Abril cae en los meses_activos de las tres actividades probadas
+    # (skimo 11-5, alp_inv 11-6, ciclismo 3-11).
+    fecha = date(2026, 4, 15)
     df = _hourly_df(
         fecha,
         {
@@ -262,10 +267,13 @@ def test_informativo_no_afecta_semaforo(actividades, zona_benasque):
 # ---------- Test 6: aviso de aludes según mes ----------
 
 def test_aviso_aludes_solo_en_invierno(actividades, zona_benasque):
-    """Skimo en julio: sin aviso de aludes. En enero: con aviso."""
-    skimo = _actividad(actividades, "skimo")
+    """Aviso de aludes solo dentro de MESES_AVISO_ALUDES (11-5), incluso
+    si la actividad sigue activa fuera de esa ventana.
 
-    # Día tranquilo, mismas variables base, dos fechas distintas.
+    Caso 1: alpinismo_invierno en junio. Activo (meses_activos incluye 6)
+    pero junio no está en aludes → no aviso.
+    Caso 2: skimo en enero. Activo y en aludes month → aviso.
+    """
     base_vals = {
         "temperature_2m": [5.0] * 24,
         "windspeed_10m": [10.0] * 24,
@@ -275,17 +283,23 @@ def test_aviso_aludes_solo_en_invierno(actividades, zona_benasque):
         "freezing_level_height": [2500.0] * 24,
     }
 
-    fecha_jul = date(2026, 7, 10)
-    prev_jul = _prevision(zona_benasque, _hourly_df(fecha_jul, base_vals))
-    ev_jul = evaluar_dia(prev_jul, skimo, fecha_jul)
-    avisos_aludes_jul = [a for a in ev_jul.avisos if "aludes" in a.lower()]
-    assert not avisos_aludes_jul, (
-        f"julio no debería tener aviso de aludes: {avisos_aludes_jul}"
+    # Caso 1: actividad activa en junio, no aludes month.
+    alp_inv = _actividad(actividades, "alpinismo_invierno")
+    fecha_jun = date(2026, 6, 10)
+    prev_jun = _prevision(zona_benasque, _hourly_df(fecha_jun, base_vals))
+    ev_jun = evaluar_dia(prev_jun, alp_inv, fecha_jun)
+    assert ev_jun is not None, "alpinismo_invierno debería estar activo en junio"
+    avisos_aludes_jun = [a for a in ev_jun.avisos if "aludes" in a.lower()]
+    assert not avisos_aludes_jun, (
+        f"junio no debería tener aviso de aludes: {avisos_aludes_jun}"
     )
 
+    # Caso 2: actividad activa en enero, aludes month.
+    skimo = _actividad(actividades, "skimo")
     fecha_ene = date(2026, 1, 10)
     prev_ene = _prevision(zona_benasque, _hourly_df(fecha_ene, base_vals))
     ev_ene = evaluar_dia(prev_ene, skimo, fecha_ene)
+    assert ev_ene is not None, "skimo debería estar activo en enero"
     avisos_aludes_ene = [a for a in ev_ene.avisos if "aludes" in a.lower()]
     assert avisos_aludes_ene, (
         f"enero debería tener aviso de aludes. avisos={ev_ene.avisos}"
@@ -535,7 +549,8 @@ def test_regla_tormenta_no_dispara_en_franja_matinal_estival(
 def test_mejor_ventana_dia_homogeneo(actividades, zona_benasque):
     """Día con condiciones constantes: todas las sub-ventanas mismo
     semáforo → es_homogenea=True, ventanas.homogenea poblada (ADR-009)."""
-    fecha = date(2026, 6, 15)
+    # Febrero está en meses_activos de skimo (11-5).
+    fecha = date(2026, 2, 15)
     df = _hourly_df(
         fecha,
         {
@@ -660,7 +675,8 @@ def test_peor_ventana_es_la_mas_estricta(actividades, zona_benasque):
 
 def test_ventana_no_se_calcula_si_no_declarada(actividades, zona_benasque):
     """Actividad sin ventana_minima_h: ev.ventanas.mejor/peor son None."""
-    fecha = date(2026, 6, 15)
+    # Febrero está en meses_activos de skimo (11-5).
+    fecha = date(2026, 2, 15)
     df = _hourly_df(
         fecha,
         {
@@ -725,7 +741,8 @@ def test_ventana_mayor_que_franja_caso_degenerado(actividades, zona_benasque):
 def test_ventana_empate_prefiere_temprana(actividades, zona_benasque):
     """Día homogéneo: se expone una única ventana (la más temprana) y
     no se duplica como mejor/peor (ADR-009)."""
-    fecha = date(2026, 6, 15)
+    # Febrero está en meses_activos de skimo (11-5).
+    fecha = date(2026, 2, 15)
     df = _hourly_df(
         fecha,
         {
@@ -869,3 +886,116 @@ def test_ventana_solape_total_se_acepta_si_es_lo_unico(zona_benasque):
         0, min(v.mejor.fin, v.peor.fin) - max(v.mejor.inicio, v.peor.inicio)
     )
     assert solape == 5
+
+
+# ---------- Tests ADR-010: activación de actividades por temporada ----------
+
+def _df_benigno(fecha: date) -> "pd.DataFrame":
+    """DataFrame con valores benignos (no dispara reglas) para test."""
+    return _hourly_df(
+        fecha,
+        {
+            "temperature_2m": [10.0] * 24,
+            "windspeed_10m": [10.0] * 24,
+            "windgusts_10m": [20.0] * 24,
+            "cloudcover": [30.0] * 24,
+            "precipitation": [0.0] * 24,
+            "relative_humidity_2m": [50.0] * 24,
+            "cape": [100.0] * 24,
+            "weathercode": [1] * 24,
+        },
+    )
+
+
+def test_actividad_no_activa_devuelve_none(actividades, zona_benasque):
+    """Skimo en julio (no en meses_activos 11-5) → evaluar_dia devuelve None."""
+    fecha = date(2026, 7, 15)
+    df = _df_benigno(fecha)
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    skimo = _actividad(actividades, "skimo")
+    ev = evaluar_dia(prev, skimo, fecha)
+    assert ev is None
+
+
+def test_actividad_activa_evalua_normalmente(actividades, zona_benasque):
+    """Skimo en febrero (en meses_activos) → evaluar_dia devuelve EvaluacionDia."""
+    fecha = date(2026, 2, 15)
+    df = _df_benigno(fecha)
+    df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+    prev = _prevision(zona_benasque, df_enr)
+
+    skimo = _actividad(actividades, "skimo")
+    ev = evaluar_dia(prev, skimo, fecha)
+    assert ev is not None
+    assert ev.semaforo in {"VERDE", "AMBAR", "ROJO", "SIN_DATOS"}
+
+
+def test_actividad_sin_meses_activos_se_evalua_siempre(zona_benasque):
+    """Actividad sin campo meses_activos (compat) → se evalúa en cualquier mes."""
+    actividad_custom = {
+        "id": "custom",
+        "nombre": "Custom (sin meses_activos)",
+        "franja_horaria": [7, 17],
+        "ventana_minima_h": 3,
+        "requiere_aviso_aludes": False,
+        # SIN meses_activos
+        "reglas": [
+            {
+                "variable": "windspeed_10m",
+                "agg": "mean",
+                "op": ">",
+                "rojo": 100,
+                "unidad": "km/h",
+                "descripcion": "Viento medio",
+            },
+        ],
+    }
+    for mes in [1, 6, 9, 12]:
+        fecha = date(2026, mes, 15)
+        df = _df_benigno(fecha)
+        df_enr = enriquecer_con_derivadas(df, elevacion_zona_m=2200)
+        prev = _prevision(zona_benasque, df_enr)
+        ev = evaluar_dia(prev, actividad_custom, fecha)
+        assert ev is not None, f"sin meses_activos debería evaluarse en mes {mes}"
+
+
+def test_transicion_mes_30_jun_1_jul_alpinismo_invierno(
+    actividades, zona_benasque
+):
+    """alpinismo_invierno activo 30-jun (mes 6), no activo 1-jul (mes 7)."""
+    alp_inv = _actividad(actividades, "alpinismo_invierno")
+
+    f_30jun = date(2026, 6, 30)
+    df_30jun = _df_benigno(f_30jun)
+    df_30jun = enriquecer_con_derivadas(df_30jun, elevacion_zona_m=2200)
+    prev_30jun = _prevision(zona_benasque, df_30jun)
+    ev_30jun = evaluar_dia(prev_30jun, alp_inv, f_30jun)
+    assert ev_30jun is not None, "junio en meses_activos de alpinismo_invierno"
+
+    f_1jul = date(2026, 7, 1)
+    df_1jul = _df_benigno(f_1jul)
+    df_1jul = enriquecer_con_derivadas(df_1jul, elevacion_zona_m=2200)
+    prev_1jul = _prevision(zona_benasque, df_1jul)
+    ev_1jul = evaluar_dia(prev_1jul, alp_inv, f_1jul)
+    assert ev_1jul is None, "julio NO en meses_activos de alpinismo_invierno"
+
+
+def test_transicion_mes_31_may_1_jun_skimo(actividades, zona_benasque):
+    """skimo activo 31-may (mes 5), no activo 1-jun (mes 6)."""
+    skimo = _actividad(actividades, "skimo")
+
+    f_31may = date(2026, 5, 31)
+    df_31may = _df_benigno(f_31may)
+    df_31may = enriquecer_con_derivadas(df_31may, elevacion_zona_m=2200)
+    prev_31may = _prevision(zona_benasque, df_31may)
+    ev_31may = evaluar_dia(prev_31may, skimo, f_31may)
+    assert ev_31may is not None, "mayo en meses_activos de skimo"
+
+    f_1jun = date(2026, 6, 1)
+    df_1jun = _df_benigno(f_1jun)
+    df_1jun = enriquecer_con_derivadas(df_1jun, elevacion_zona_m=2200)
+    prev_1jun = _prevision(zona_benasque, df_1jun)
+    ev_1jun = evaluar_dia(prev_1jun, skimo, f_1jun)
+    assert ev_1jun is None, "junio NO en meses_activos de skimo"

@@ -26,6 +26,11 @@
 # (subfranja continua de esa duración con mejor semáforo) y mostrarla
 # en el detalle del modal HTML. Sirve para identificar ventanas
 # favorables en días con semáforo global AMBAR o ROJO.
+#
+# Cada actividad declara meses_activos: lista de meses (1-12) en los
+# que la actividad se evalúa. Si la fecha evaluada cae en un mes que
+# no está en la lista, la fila de esa actividad no aparece para ese
+# día en la tabla. Decisión documentada en ADR-010.
 
 actividades:
 
@@ -35,6 +40,7 @@ actividades:
     requiere_aviso_aludes: true
     franja_horaria: [7, 17]
     ventana_minima_h: 4
+    meses_activos: [11, 12, 1, 2, 3, 4, 5]
     reglas:
       - variable: windspeed_10m
         agg: mean
@@ -74,6 +80,7 @@ actividades:
     requiere_aviso_aludes: true
     franja_horaria: [7, 17]
     ventana_minima_h: 6
+    meses_activos: [11, 12, 1, 2, 3, 4, 5, 6]
     reglas:
       - variable: windspeed_10m
         agg: mean
@@ -111,6 +118,7 @@ actividades:
     requiere_aviso_aludes: false
     franja_horaria: [7, 17]
     ventana_minima_h: 6
+    meses_activos: [6, 7, 8, 9, 10]
     reglas:
       - variable: indice_tormenta
         agg: cualquier_franja
@@ -143,6 +151,7 @@ actividades:
     requiere_aviso_aludes: false
     franja_horaria: [7, 17]
     ventana_minima_h: 2
+    meses_activos: [3, 4, 5, 6, 7, 8, 9, 10, 11]
     reglas:
       - variable: temperature_2m
         agg: max
@@ -175,6 +184,7 @@ actividades:
     requiere_aviso_aludes: false
     franja_horaria: [7, 17]
     ventana_minima_h: 3
+    meses_activos: [3, 4, 5, 6, 7, 8, 9, 10, 11]
     reglas:
       - variable: windspeed_10m
         agg: mean

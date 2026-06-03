@@ -129,6 +129,25 @@ button.celda.ambar     { background: #fef3c7; color: #d97706; border-color: #fcd
 button.celda.rojo      { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
 button.celda.sin-datos { background: #f5f5f5; color: #737373; border-color: #d4d4d4; }
 
+/* Celda placeholder "fuera de temporada" (ADR-010). NO es un button:
+   no se puede hacer click y no lleva atributos data-*. */
+span.celda.fuera-temporada {
+  display: inline-flex;
+  width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  border: 1px solid #e5e5e5;
+  background: #f5f5f5;
+  color: #737373;
+  font-size: 1.35rem;
+  font-weight: 400;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+
 footer.principal {
   padding: 1rem 0;
   margin-top: 2rem;
@@ -467,6 +486,26 @@ def _render_aviso_aludes(evaluaciones_por_zona: dict[str, Any]) -> str:
 """
 
 
+def _render_celda_fuera_temporada(
+    actividad: dict[str, Any],
+    fecha,
+) -> str:
+    """Celda placeholder gris para días fuera de temporada (ADR-010).
+
+    No es un ``<button>``: no se puede hacer click y no lleva atributos
+    ``data-*`` (sin payload de detalle).
+    """
+    aria = (
+        f"{actividad['nombre']} fuera de temporada el "
+        f"{_fmt_fecha_larga(fecha)}"
+    )
+    return (
+        f'<td><span class="celda fuera-temporada" '
+        f'title="Fuera de temporada" '
+        f'aria-label="{_e(aria)}">—</span></td>'
+    )
+
+
 def _render_celda(
     zona: dict[str, Any],
     actividad: dict[str, Any],
@@ -474,12 +513,7 @@ def _render_celda(
     evaluacion: EvaluacionDia | None,
 ) -> str:
     if evaluacion is None:
-        clase = CLASE_CSS["SIN_DATOS"]
-        glifo = GLIFOS_HTML["SIN_DATOS"]
-        return (
-            f'<td><button type="button" class="celda {clase}" '
-            f'aria-label="Sin evaluación" disabled>{glifo}</button></td>'
-        )
+        return _render_celda_fuera_temporada(actividad, fecha)
 
     clase = CLASE_CSS.get(evaluacion.semaforo, "sin-datos")
     glifo = GLIFOS_HTML.get(evaluacion.semaforo, "?")
@@ -523,6 +557,10 @@ def _render_zona(
     por_clave: dict[tuple[str, Any], EvaluacionDia] = {
         (ev.actividad_id, ev.fecha): ev for ev in evaluaciones
     }
+    # Actividades con al menos una evaluación en el horizonte de la zona
+    # (ADR-010): las que no, no se muestran como fila.
+    actividades_con_eval: set[str] = {ev.actividad_id for ev in evaluaciones}
+
     bol = zona.get("boletin_aludes") or {}
     meta_aludes = ""
     if bol.get("url"):
@@ -538,6 +576,8 @@ def _render_zona(
 
     filas = []
     for act in actividades:
+        if act["id"] not in actividades_con_eval:
+            continue  # Fila omitida: actividad fuera de temporada todo el horizonte.
         celdas = "".join(
             _render_celda(zona, act, f, por_clave.get((act["id"], f)))
             for f in fechas
@@ -616,13 +656,18 @@ def renderizar_html(
     Returns:
         Path absoluto del archivo escrito.
     """
-    # Conjunto unificado de fechas (todas las zonas usan el mismo
-    # horizonte, pero por seguridad unimos).
-    fechas: list = sorted({
-        ev.fecha
-        for paquete in evaluaciones_por_zona.values()
-        for ev in paquete["evaluaciones"]
-    })
+    # Conjunto unificado de fechas. Prioriza ``fechas_horizonte`` por zona
+    # si está disponible: garantiza que todas las columnas del horizonte
+    # aparezcan en la cabecera aunque una actividad concreta no tenga
+    # evaluación ese día (placeholder fuera-temporada, ADR-010).
+    fechas_set: set = set()
+    for paquete in evaluaciones_por_zona.values():
+        fh = paquete.get("fechas_horizonte")
+        if fh:
+            fechas_set.update(fh)
+        else:
+            fechas_set.update(ev.fecha for ev in paquete["evaluaciones"])
+    fechas: list = sorted(fechas_set)
 
     secciones_zonas = []
     for zona_id in evaluaciones_por_zona:
