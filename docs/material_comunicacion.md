@@ -70,33 +70,37 @@ agresiva. "Construí esto y aquí está".
 
 ### Español
 
-[Pendiente de publicar: ver "Notas de uso" al final del archivo]
+[Pendiente de publicar tras revisión final]
 
-Llevo unas semanas con un proyecto personal que evalúa idoneidad meteorológica para actividades de montaña en el Pirineo: skimo, alpinismo, trail y ciclismo, en dos zonas. La unidad de salida es un semáforo por actividad y día, con los motivos del color a la vista.
+Decidir si una salida concreta de montaña es viable o no exige cruzar varias variables meteorológicas a la vez: temperatura, viento medio, ráfagas, cero térmico, nubosidad, precipitación, índice convectivo. Las apps meteorológicas las muestran como datos crudos. El cruce, con criterio de la actividad concreta —no es lo mismo skimo que alpinismo invernal o que trail— vive en la cabeza del montañero con experiencia.
 
-Ya con el sitio en producción se la pasé a dos compañeros sin explicarles nada. La primera observación fue evidente en retrospectiva: un día completo es demasiada agregación, no se puede planear una salida de tres horas mirando solo el color global. Es el tipo de comentario que solo aparece cuando alguien sin contexto interactúa con el producto, no cuando uno se autoevalúa.
+Llevo unas semanas con un proyecto personal que intenta formalizar ese cruce: meteo-pirineo. Consume la previsión horaria de un modelo numérico profesional (Météo-France ARPEGE) vía Open-Meteo y devuelve un semáforo por actividad y día, con los motivos del color a la vista y la mejor y peor ventana dentro de la franja útil. Cinco actividades, dos zonas del Pirineo central. Pipeline diario en producción, sitio público que se regenera cada mañana con GitHub Actions.
 
-La iteración siguiente añade "mejor y peor ventana del día" dentro del detalle de cada celda, calculada con ventana deslizante de la duración mínima de cada actividad. La unidad principal sigue siendo el día —para no comprometer el primer vistazo—, pero el detalle ya permite ver la subfranja útil.
+Es una versión inicial. Hay cosas que sé que faltan y todavía no he hecho: combinar varios modelos para tener mejor robustez (ahora solo uso ARPEGE, los modelos privados están detrás de pago), ajustar las activaciones por estación (alpinismo invernal no debería evaluarse igual en julio que en febrero), refinar los umbrales contra observación real, ampliar a más zonas. Todo eso está identificado como deuda en el repositorio.
 
-El aprendizaje no es técnico, es de producto. Las decisiones de granularidad son baratas de corregir cuando el producto está en uso real, y casi imposibles de detectar sin un observador externo.
+Lo que sí está hecho: la lógica de evaluación es declarativa (umbrales en YAML, no en código), las decisiones de arquitectura están documentadas en ADRs, hay tests automatizados de la lógica, y la herramienta lleva varias semanas funcionando para mis propias salidas.
 
-Repositorio: https://github.com/Falce-source/meteo-pirineo
+Comparto el enlace por si a alguien le resulta útil o quiere comentar el enfoque. El código es abierto.
+
 Sitio: https://falce-source.github.io/meteo-pirineo/
+Código: https://github.com/Falce-source/meteo-pirineo
 
 ### English
 
-[Pendiente de publicar: ver "Notas de uso" al final del archivo]
+[Pendiente de publicar tras revisión final]
 
-I have been spending a few weeks on a personal project that evaluates weather suitability for mountain activities in the Pyrenees: ski touring, alpinism, trail running and cycling, across two zones. The unit of output is a traffic-light verdict per activity per day, with the reasons for each colour in plain view.
+Deciding whether a specific mountain outing is viable or not requires cross-checking several weather variables at once: temperature, mean wind, gusts, freezing level, cloud cover, precipitation, convective index. Weather apps show them as raw data. The cross-check, with judgement specific to the activity — ski touring is not the same as winter alpinism or trail running — lives in the head of the experienced mountaineer.
 
-With the site live I shared it with two colleagues without explanation. The first observation was obvious in hindsight: a full day is too much aggregation, you cannot plan a three-hour outing looking only at the global colour. The kind of comment that only surfaces when someone without context interacts with the product, not when you self-assess.
+I have been working on a personal project for a few weeks that tries to formalise that cross-check: meteo-pirineo. It consumes hourly forecasts from a professional numerical weather model (Météo-France ARPEGE) via Open-Meteo and returns a traffic-light verdict per activity per day, with the reasons for each colour in plain view, plus the best and worst window within the active timeframe. Five activities, two zones in the central Pyrenees. Daily pipeline in production, public site that regenerates each morning through GitHub Actions.
 
-The next iteration adds a "best and worst window of the day" inside the detail of each cell, computed by a sliding window of the activity's minimum duration. The primary unit stays the day — so the first glance is not compromised — but the detail now reveals the useful sub-band.
+It is an early version. There are things I know are missing and I have not done yet: combining several models for better robustness (I am only using ARPEGE for now, private models are behind paywalls), adjusting activity triggers by season (winter alpinism should not be evaluated the same in July as in February), refining thresholds against real observation, expanding to more zones. All of that is tracked as debt in the repository.
 
-The learning is not technical, it is product. Decisions about granularity are cheap to correct once the product is in real use, and almost impossible to spot without an outside observer.
+What is done: the evaluation logic is declarative (thresholds in YAML, not in code), architecture decisions are documented in ADRs, the logic has automated tests, and the tool has been running for several weeks for my own outings.
 
-Repository: https://github.com/Falce-source/meteo-pirineo
+I share the link in case anyone finds it useful or wants to discuss the approach. The code is open.
+
 Site: https://falce-source.github.io/meteo-pirineo/
+Code: https://github.com/Falce-source/meteo-pirineo
 
 ---
 
