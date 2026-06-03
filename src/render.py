@@ -129,6 +129,19 @@ button.celda.ambar     { background: #fef3c7; color: #d97706; border-color: #fcd
 button.celda.rojo      { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
 button.celda.sin-datos { background: #f5f5f5; color: #737373; border-color: #d4d4d4; }
 
+/* Nota al pie de zona listando actividades fuera de temporada en
+   todo el horizonte (ADR-010). Coherente con la línea equivalente
+   de la salida de consola. */
+.fuera-temporada-nota {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: #737373;
+}
+.fuera-temporada-nota span {
+  color: #525252;
+  font-style: italic;
+}
+
 /* Celda placeholder "fuera de temporada" (ADR-010). NO es un button:
    no se puede hacer click y no lleva atributos data-*. */
 span.celda.fuera-temporada {
@@ -575,15 +588,28 @@ def _render_zona(
     )
 
     filas = []
+    actividades_omitidas: list[dict[str, Any]] = []
     for act in actividades:
         if act["id"] not in actividades_con_eval:
-            continue  # Fila omitida: actividad fuera de temporada todo el horizonte.
+            # Fila omitida: actividad fuera de temporada todo el horizonte.
+            actividades_omitidas.append(act)
+            continue
         celdas = "".join(
             _render_celda(zona, act, f, por_clave.get((act["id"], f)))
             for f in fechas
         )
         filas.append(
             f'<tr><th scope="row">{_e(act["nombre"])}</th>{celdas}</tr>'
+        )
+
+    nota_omitidas = ""
+    if actividades_omitidas:
+        spans = ", ".join(
+            f"<span>{_e(act['nombre'])}</span>" for act in actividades_omitidas
+        )
+        nota_omitidas = (
+            f'  <p class="fuera-temporada-nota">Fuera de temporada: '
+            f'{spans}.</p>\n'
         )
 
     return f"""\
@@ -601,7 +627,7 @@ def _render_zona(
       {"".join(filas)}
     </tbody>
   </table>
-</section>
+{nota_omitidas}</section>
 """
 
 

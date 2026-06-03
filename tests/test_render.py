@@ -475,3 +475,91 @@ def test_celda_fuera_temporada_no_es_clickable(tmp_path):
             )
         # Lleva el tooltip 'Fuera de temporada'.
         assert ft.get("title") == "Fuera de temporada"
+
+
+# ---------- Tests nota "fuera de temporada" en HTML ----------
+
+def test_html_nota_fuera_temporada_presente_si_hay_omitidas(tmp_path):
+    """Horizonte con actividades completamente omitidas → la nota
+    'Fuera de temporada' aparece tras la tabla con los nombres."""
+    zona = ZONAS_FAKE[0]
+    fechas_horizonte = [date(2026, 7, d) for d in (1, 2, 3)]
+    # Solo alpinismo_estival tiene evaluaciones (las otras 4 fuera).
+    evs = [
+        _eval(zona["id"], "alpinismo_estival", f, "VERDE")
+        for f in fechas_horizonte
+    ]
+    paquetes = {zona["id"]: {"zona": zona, "evaluaciones": evs}}
+
+    contenido, _ = _render_to_with_horizon(tmp_path, paquetes, fechas_horizonte)
+    soup = BeautifulSoup(contenido, "html.parser")
+
+    nota = soup.find("p", class_="fuera-temporada-nota")
+    assert nota is not None, "esperaba un <p class='fuera-temporada-nota'>"
+    texto = nota.get_text()
+    assert texto.startswith("Fuera de temporada:")
+    # Los 4 nombres omitidos aparecen.
+    nombres_omitidos = {
+        "Esquí de montaña",
+        "Alpinismo invernal",
+        "Trail running",
+        "Ciclismo",
+    }
+    for nombre in nombres_omitidos:
+        assert nombre in texto, f"nombre '{nombre}' ausente de la nota: {texto}"
+    # Cada nombre en su <span> (estilo discreto).
+    spans = nota.find_all("span")
+    assert len(spans) == 4
+
+
+def test_html_sin_nota_fuera_temporada_si_todas_activas(tmp_path):
+    """Si TODAS las actividades declaradas tienen evaluación, no se
+    renderiza el párrafo de fuera-temporada (no se deja <p> vacío)."""
+    zona = ZONAS_FAKE[0]
+    fechas_horizonte = [date(2026, 5, 19), date(2026, 5, 20)]
+    # Una evaluación por cada actividad fake en algún día del horizonte.
+    evs = [
+        _eval(zona["id"], act["id"], fechas_horizonte[0], "VERDE")
+        for act in ACTIVIDADES_FAKE
+    ]
+    paquetes = {zona["id"]: {"zona": zona, "evaluaciones": evs}}
+
+    contenido, _ = _render_to_with_horizon(tmp_path, paquetes, fechas_horizonte)
+    soup = BeautifulSoup(contenido, "html.parser")
+
+    nota = soup.find("p", class_="fuera-temporada-nota")
+    assert nota is None, (
+        f"no debería haber nota cuando todas las actividades están activas, "
+        f"pero apareció: {nota.get_text() if nota else None!r}"
+    )
+
+
+def test_html_nota_no_incluye_actividades_parcialmente_activas(tmp_path):
+    """Una actividad evaluada en algunos días y no otros NO aparece en la
+    nota (su ausencia parcial se ve como celdas placeholder en la tabla).
+    Solo se listan las completamente omitidas en el horizonte."""
+    zona = ZONAS_FAKE[0]
+    # Horizonte cruza 30-jun a 4-jul.
+    fechas_horizonte = [date(2026, 6, 30)] + [date(2026, 7, d) for d in (1, 2, 3, 4)]
+    # alpinismo_invierno parcial: solo 30-jun.
+    evs = [_eval(zona["id"], "alpinismo_invierno", date(2026, 6, 30), "VERDE")]
+    # alpinismo_estival completo: todos los días del horizonte.
+    evs.extend(
+        _eval(zona["id"], "alpinismo_estival", f, "VERDE")
+        for f in fechas_horizonte
+    )
+    paquetes = {zona["id"]: {"zona": zona, "evaluaciones": evs}}
+
+    contenido, _ = _render_to_with_horizon(tmp_path, paquetes, fechas_horizonte)
+    soup = BeautifulSoup(contenido, "html.parser")
+
+    nota = soup.find("p", class_="fuera-temporada-nota")
+    assert nota is not None
+    texto = nota.get_text()
+    # alpinismo_invierno tiene una eval (parcial) → NO debe aparecer.
+    assert "Alpinismo invernal" not in texto, (
+        f"alpinismo_invierno (parcial) no debe estar en la nota: {texto}"
+    )
+    # Las completamente omitidas (skimo, trail, ciclismo) sí.
+    for nombre in ("Esquí de montaña", "Trail running", "Ciclismo"):
+        assert nombre in texto, f"falta '{nombre}' en nota: {texto}"
