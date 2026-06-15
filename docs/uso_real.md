@@ -71,6 +71,35 @@ Formato libre. Lo importante es que esté.
   Pendiente revisar retroactivamente qué semáforo dio la herramienta
   para trail Benasque 30-may si está en histórico de commits.
 
+### 2026-06-06 — Entrenamiento Sierra de Guara (Alquezar)
+
+- **Zona**: Alquezar (no cubierta por la herramienta).
+- **Actividad**: trail running.
+- **Cuándo consulté la herramienta**: 04/06/2026.
+- **Semáforo que mostró**:
+- **Mejor ventana sugerida**:
+
+✓
+Trail running
+Valle de Benasque (Cerler / bajo Aneto) — 06-jun-2026 — VERDE
+
+Datos clave
+temperature_2m_max
+12.9
+precipitation_max
+0.0
+indice_tormenta_max
+1.0
+windspeed_10m_mean
+4.4
+Ventanas óptimas (ventana mínima: 2 h)
+Todo el día homogéneo:
+✓
+- **Decisión que tomé**: salí
+- **Qué me encontré realmente**: buena temperatura, a primera hora de la mañana algo cubierto y viento frio.
+- **¿La herramienta acertó?**: que lo decida Claude
+- **Notas**:
+
 ---
 
 ## Observaciones agregadas (a actualizar a medida que crezca el registro)
