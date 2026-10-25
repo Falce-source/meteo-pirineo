@@ -123,6 +123,39 @@ def test_parseo_respuesta_valida(zona_benasque, fixture_payload, fresh_session):
 
 
 @responses.activate
+def test_parseo_cambio_horario_otoño_sin_nat(
+    zona_benasque, fresh_session
+):
+    """La hora repetida del cambio a horario de invierno se desambigua."""
+    times = [
+        "2026-10-25T00:00",
+        "2026-10-25T01:00",
+        "2026-10-25T02:00",
+        "2026-10-25T02:00",
+        "2026-10-25T03:00",
+    ]
+    payload = {
+        "hourly": {
+            "time": times,
+            **{var: [0] * len(times) for var in HOURLY_VARIABLES},
+        }
+    }
+    responses.add(
+        responses.GET,
+        OPEN_METEO_URL,
+        json=payload,
+        status=200,
+    )
+
+    prev = fetch_zona(zona_benasque, session=fresh_session)
+
+    assert not prev.horario.index.hasnans
+    assert prev.horario.index.is_monotonic_increasing
+    assert len(prev.horario.index) == len(times)
+    assert list(prev.horario.index.hour) == [0, 1, 2, 2, 3]
+
+
+@responses.activate
 def test_variable_faltante_no_rompe(
     zona_benasque, fixture_payload, fresh_session, caplog
 ):
