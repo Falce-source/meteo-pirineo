@@ -157,6 +157,10 @@ def _parse_response(
             columnas[var] = [float("nan")] * len(idx)
 
     df = pd.DataFrame(columnas, index=idx)
+    # During the autumn DST transition, local timestamps in the repeated
+    # hour are ambiguous without an offset. Discard those rows rather than
+    # passing NaT timestamps to downstream date grouping.
+    df = df.loc[~df.index.isna()]
 
     # Tipado numérico (Open-Meteo entrega números, pero garantizamos
     # el cast por si llega null/None puntual).

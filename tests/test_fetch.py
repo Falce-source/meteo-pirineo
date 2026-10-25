@@ -22,6 +22,7 @@ import responses
 from src.fetch import (
     HOURLY_VARIABLES,
     OPEN_METEO_URL,
+    _parse_response,
     cargar_zonas,
     fetch_zona,
 )
@@ -120,6 +121,27 @@ def test_parseo_respuesta_valida(zona_benasque, fixture_payload, fresh_session):
     # Metadata enriquecida con elevación solicitada.
     assert prev.metadata["elevacion_solicitada_m"] == 2200
     assert prev.metadata["timezone"] == "Europe/Madrid"
+
+
+def test_parseo_descarta_horas_ambiguas_en_cambio_horario():
+    """Las horas repetidas del cambio de hora otoñal no generan índices NaT."""
+    payload = {
+        "hourly": {
+            "time": [
+                "2026-10-25T01:00",
+                "2026-10-25T02:00",
+                "2026-10-25T02:00",
+                "2026-10-25T03:00",
+            ],
+            "temperature_2m": [1, 2, 3, 4],
+        }
+    }
+
+    df, _ = _parse_response(payload, "test")
+
+    assert not df.index.isna().any()
+    assert df["temperature_2m"].tolist() == [1, 4]
+    assert df.index.hour.tolist() == [1, 3]
 
 
 @responses.activate
