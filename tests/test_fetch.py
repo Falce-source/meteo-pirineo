@@ -123,6 +123,35 @@ def test_parseo_respuesta_valida(zona_benasque, fixture_payload, fresh_session):
 
 
 @responses.activate
+def test_transicion_horaria_otoño_conserva_horas_duplicadas(
+    zona_benasque, fresh_session
+):
+    """Las dos horas locales repetidas en el cambio de horario son instantes distintos."""
+    times = [
+        "2026-10-25T00:00",
+        "2026-10-25T01:00",
+        "2026-10-25T02:00",
+        "2026-10-25T02:00",
+        "2026-10-25T03:00",
+    ]
+    payload = {
+        "hourly": {
+            "time": times,
+            **{var: [0] * len(times) for var in HOURLY_VARIABLES},
+        }
+    }
+    responses.add(responses.GET, OPEN_METEO_URL, json=payload, status=200)
+
+    prev = fetch_zona(zona_benasque, session=fresh_session)
+    idx = prev.horario.index
+
+    assert not idx.isna().any()
+    assert idx.tz_convert("UTC").equals(
+        pd.date_range("2026-10-24 22:00", periods=5, freq="h", tz="UTC")
+    )
+
+
+@responses.activate
 def test_variable_faltante_no_rompe(
     zona_benasque, fixture_payload, fresh_session, caplog
 ):

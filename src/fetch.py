@@ -141,7 +141,7 @@ def _parse_response(
     idx = pd.to_datetime(times)
     # Open-Meteo entrega tiempos naive en la timezone solicitada.
     if idx.tz is None:
-        idx = idx.tz_localize(TIMEZONE, nonexistent="shift_forward", ambiguous="NaT")
+        idx = idx.tz_localize(TIMEZONE, nonexistent="shift_forward", ambiguous="infer")
     else:
         idx = idx.tz_convert(TIMEZONE)
     idx.name = "time"
